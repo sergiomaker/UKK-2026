@@ -2,7 +2,7 @@
 
 session_start();
 
-include "includes/cek_session.php";
+include "cek_session.php";
 
 ?>
 
@@ -50,8 +50,13 @@ include "includes/cek_session.php";
 
 <?php endif; ?>
                 <li class="nav-item mb-2">
-                    <a href="Kelas" class="nav-link text-white">
+                    <a href="datakelas.php" class="nav-link text-white">
                         Kelas
+                    </a>
+                </li>
+                 <li class="nav-item mb-2">
+                    <a href="datasiswa.php" class="nav-link text-white">
+                        siswa
                     </a>
                 </li>
 

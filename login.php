@@ -1,63 +1,112 @@
+
 <?php
 session_start();
+
+if (isset($_SESSION['user_id'])) {
+    header("Location: dashboard.php");
+    exit;
+}
+
+$error = $_GET['error'] ?? '';
 ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Aplikasi Sekolah</title>
 
-    <title>Login</title>
+    <style>
+        * { box-sizing: border-box; }
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
-        rel="stylesheet"
-        integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
-        crossorigin="anonymous">
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #0d47a1, #42a5f5);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
 
+        .login-box {
+            background: white;
+            padding: 35px;
+            border-radius: 15px;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 10px 30px #0003;
+        }
+
+        h2 { text-align: center; color: #1565c0; }
+
+        p {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+        }
+
+        label {
+            display: block;
+            margin-top: 18px;
+            font-size: 14px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            margin-top: 7px;
+            border: 1px solid #ccc;
+            border-radius: 7px;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 24px;
+            padding: 12px;
+            background: #1565c0;
+            color: white;
+            border: none;
+            border-radius: 7px;
+            cursor: pointer;
+        }
+
+        button:hover { background: #0d47a1; }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+    </style>
 </head>
 
 <body>
-   
+    <div class="login-box">
+        <h2>Login Admin</h2>
+        <p>Aplikasi Sistem Informasi Sekolah</p>
 
- <div class="container d-flex justify-content-center align-items-center vh-100">
+        <?php if ($error === 'gagal'): ?>
+            <div class="error">Username atau password salah.</div>
+        <?php elseif ($error === 'kosong'): ?>
+            <div class="error">Username dan password wajib diisi.</div>
+        <?php endif; ?>
 
-    <div class="card shadow"
-         style="width: 320px; height: 380px; border-radius: 12px;">
+        <form action="proses_login.php" method="POST">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username"
+                   autocomplete="username" required>
 
-        <div class="card-body p-4">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password"
+                   autocomplete="current-password" required>
 
-            <h2 class="text-center mb-4">LOGIN</h2>
-
-            <form action="proses_login.php" method="POST">
-
-                <div class="mb-3 text-start">
-                    <label class="form-label">Email</label>
-                    <input type="text"
-                           name="email"
-                           class="form-control">
-                </div>
-
-                <div class="mb-4 text-start">
-                    <label class="form-label">Password</label>
-                    <input type="password"
-                           name="password"
-                           class="form-control">
-                </div>
-
-                <div class="text-center">
-                    <button type="submit"
-                            name="login"
-                            value="Login"
-                            class="btn btn-success w-100">
-                        LOGIN
-                    </button>
-                </div>
-
-            </form>
-
-        </div>
-
+            <button type="submit">Masuk</button>
+        </form>
     </div>
-
-</div>
 </body>
 </html>
