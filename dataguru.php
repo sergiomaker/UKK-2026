@@ -90,11 +90,11 @@ if (isset($_POST['hapus'])) {
 }
 
 // MENAMPILKAN DATA GURU
-$result = mysqli_query(
+$result = mysqli_query( 
     $koneksi,
     "SELECT nip, nama_guru, jenis_kelamin,
-            mata_pelajaran, alamat, no_hp
-     FROM guru
+            mata_pelajaran, alamat,
+     FROM t_guru
      ORDER BY nip DESC"
 );
 

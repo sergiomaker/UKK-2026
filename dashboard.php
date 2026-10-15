@@ -67,10 +67,11 @@ include "cek_session.php";
                 </li>
 
                 <li class="nav-item mb-2">
-    <a href="about.php" class="nav-link text-white">
-        About Me
+    <a href="t_tahun_ajaran.php" class="nav-link text-white">
+        Tahun ajaran
     </a>
 </li>
+                
 
                 <hr class="text-secondary">
 

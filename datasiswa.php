@@ -92,8 +92,8 @@ if (isset($_POST['hapus'])) {
 // Mengambil data siswa tanpa menggunakan kolom ID
 $result = mysqli_query(
     $koneksi,
-    "SELECT nis, nama_siswa, kelas, jenis_kelamin, alamat, no_hp
-     FROM siswa
+    "SELECT nis, nama, jenis_kelamin, alamat
+     FROM t_siswa
      ORDER BY nis DESC"
 );
 
@@ -243,11 +243,8 @@ if (!$result) {
         <tr>
             <th>No.</th>
             <th>NIS</th>
-            <th>Nama Siswa</th>
-            <th>Kelas</th>
             <th>Jenis Kelamin</th>
             <th>Alamat</th>
-            <th>No. HP</th>
             <th>Aksi</th>
         </tr>
         </thead>
@@ -260,11 +257,9 @@ if (!$result) {
                 <tr>
                     <td><?= $no++ ?></td>
                     <td><?= aman($siswa['nis']) ?></td>
-                    <td><?= aman($siswa['nama_siswa']) ?></td>
-                    <td><?= aman($siswa['kelas']) ?></td>
+                    <td><?= aman($siswa['nama']) ?></td>
                     <td><?= aman($siswa['jenis_kelamin']) ?></td>
                     <td><?= aman($siswa['alamat']) ?></td>
-                    <td><?= aman($siswa['no_hp']) ?></td>
                     <td>
                         <form method="POST" action="datasiswa.php"
                               onsubmit="return confirm('Yakin ingin menghapus siswa ini?');">
