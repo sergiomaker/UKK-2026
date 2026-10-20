@@ -51,7 +51,7 @@ include "cek_session.php";
 <?php endif; ?>
                 <li class="nav-item mb-2">
                     <a href="datakelas.php" class="nav-link text-white">
-                        Kelas
+                         DATAKelas
                     </a>
                 </li>
                  <li class="nav-item mb-2">
@@ -69,6 +69,11 @@ include "cek_session.php";
                 <li class="nav-item mb-2">
     <a href="t_tahun_ajaran.php" class="nav-link text-white">
         Tahun ajaran
+    </a>
+</li>
+         <li class="nav-item mb-2">
+    <a href="kelola_wali_kelas.php" class="nav-link text-white">
+        wali_kelas
     </a>
 </li>
                 
