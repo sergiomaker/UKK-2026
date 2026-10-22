@@ -77,6 +77,11 @@ include "cek_session.php";
         wali_kelas
     </a>
 </li>
+     <li class="nav-item mb-2">
+    <a href="Aboutme.php" class="nav-link text-white">
+        aboutme
+    </a>
+</li>
                 
 
                 <hr class="text-secondary">

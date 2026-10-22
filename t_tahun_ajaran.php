@@ -83,7 +83,7 @@ try {
         :root {
             --sidebar: #172554;
             --sidebar-hover: #263b75;
-            --primary: #2563eb;
+            --primary: #d8e2f7;
             --background: #f4f7fb;
         }
 
