@@ -97,8 +97,8 @@ $error = $_GET['error'] ?? '';
         <?php endif; ?>
 
         <form action="proses_login.php" method="POST">
-            <label for="username">Username</label>
-            <input type="text" id="username" name="username"
+            <label for="username">Email</label>
+            <input type="text" id="username" name="email"
                    autocomplete="username" required>
 
             <label for="password">Password</label>

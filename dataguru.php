@@ -205,6 +205,8 @@ if (!$result) {
 <body>
 <div class="container">
 
+
+
     <h2>Data Guru</h2>
     <p>Kelola data guru yang terdaftar di sekolah.</p>
 

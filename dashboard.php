@@ -36,11 +36,6 @@ include "cek_session.php";
 <!-- Menu Data Siswa dan Data Guru khusus Admin -->
 <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') : ?>
 
-    <li class="nav-item mb-2">
-        <a href="Data Siswa" class="nav-link text-white">
-            Data Siswa
-        </a>
-    </li>
 
     <li class="nav-item mb-2">
         <a href="Data Guru" class="nav-link text-white">
@@ -75,6 +70,11 @@ include "cek_session.php";
          <li class="nav-item mb-2">
     <a href="kelola_wali_kelas.php" class="nav-link text-white">
         wali_kelas
+    </a>
+</li>
+         <li class="nav-item mb-2">
+    <a href="kategori pelanggaran.php" class="nav-link text-white">
+        pelanggaran
     </a>
 </li>
      <li class="nav-item mb-2">
