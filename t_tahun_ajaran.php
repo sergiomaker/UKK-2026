@@ -1,562 +1,321 @@
+
 <?php
-session_start();
-require_once 'cek_session.php';
+require_once __DIR__ . '/cek_session.php';
 
-mysqli_report(MYSQLI_REPORT_OFF);
-mysqli_set_charset($koneksi, "utf8mb4");
+$hasilRingkasan = mysqli_query(
+    $koneksi,
+    "SELECT
+        (SELECT COUNT(*) FROM t_siswa WHERE status_aktif = 1) AS total_siswa,
+        (SELECT COUNT(*) FROM t_kelas WHERE status_aktif = 1) AS total_kelas,
+        (SELECT COUNT(*) FROM t_tahun_ajaran) AS total_tahun"
+);
+if (!$hasilRingkasan) {
+    die('Gagal mengambil ringkasan data: ' . htmlspecialchars(mysqli_error($koneksi), ENT_QUOTES, 'UTF-8'));
+}
+$ringkasan = mysqli_fetch_assoc($hasilRingkasan);
 
-// Fungsi untuk mengamankan teks HTML
-function e($value) {
-    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+$hasilTahunAktif = mysqli_query(
+    $koneksi,
+    "SELECT nama, tanggal_mulai, tanggal_selesai
+     FROM t_tahun_ajaran
+     WHERE status_aktif = 1
+     ORDER BY tanggal_mulai DESC, id DESC
+     LIMIT 1"
+);
+if (!$hasilTahunAktif) {
+    die('Gagal mengambil tahun ajaran aktif: ' . htmlspecialchars(mysqli_error($koneksi), ENT_QUOTES, 'UTF-8'));
+}
+$tahunAktif = mysqli_fetch_assoc($hasilTahunAktif);
+
+$hasilDaftarTahun = mysqli_query(
+    $koneksi,
+    "SELECT nama, tanggal_mulai, tanggal_selesai, status_aktif
+     FROM t_tahun_ajaran
+     ORDER BY tanggal_mulai DESC, id DESC
+     LIMIT 10"
+);
+if (!$hasilDaftarTahun) {
+    die('Gagal mengambil daftar tahun ajaran: ' . htmlspecialchars(mysqli_error($koneksi), ENT_QUOTES, 'UTF-8'));
 }
 
-// Menghitung jumlah data dengan aman jika tabel belum tersedia
-function jumlahData($koneksi, $tabel) {
-    $tabelDiizinkan = ['siswa', 'kelas', 'tahun_ajaran'];
-
-    if (!in_array($tabel, $tabelDiizinkan, true)) {
-        return 0;
-    }
-
-    try {
-        $result = mysqli_query(
-            $koneksi,
-            "SELECT COUNT(*) AS total FROM `$tabel`"
-        );
-
-        if ($result) {
-            return (int)mysqli_fetch_assoc($result)['total'];
-        }
-    } catch (Throwable $err) {
-        // Tabel belum tersedia
-    }
-
-    return 0;
-}
-
-$totalSiswa = jumlahData($koneksi, 'siswa');
-$totalKelas = jumlahData($koneksi, 'kelas');
-$totalTahun = jumlahData($koneksi, 'tahun_ajaran');
-
-$tahunAktif = null;
-$daftarTahun = null;
-
-try {
-    $resultAktif = mysqli_query(
-        $koneksi,
-        "SELECT tahun_ajaran, semester
-         FROM tahun_ajaran
-         WHERE status = 'Aktif'
-         LIMIT 1"
-    );
-
-    if ($resultAktif) {
-        $tahunAktif = mysqli_fetch_assoc($resultAktif);
-    }
-
-    $daftarTahun = mysqli_query(
-        $koneksi,
-        "SELECT id_tahun_ajaran, tahun_ajaran, semester, status
-         FROM tahun_ajaran
-         ORDER BY tahun_ajaran DESC,
-         FIELD(semester, 'Ganjil', 'Genap')
-         LIMIT 5"
-    );
-} catch (Throwable $err) {
-    $daftarTahun = false;
+function aman($nilai)
+{
+    return htmlspecialchars((string)$nilai, ENT_QUOTES, 'UTF-8');
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Dashboard Admin | UKK-2026</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard UKK-2026</title>
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-          rel="stylesheet">
+<style>
+* {
+    box-sizing: border-box;
+    font-family: Arial, sans-serif;
+}
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
-          rel="stylesheet">
+body {
+    margin: 0;
+    background: #f1f3f5;
+    color: #222;
+}
 
-    <style>
-        :root {
-            --sidebar: #172554;
-            --sidebar-hover: #263b75;
-            --primary: #d8e2f7;
-            --background: #f4f7fb;
-        }
+.container {
+    max-width: 1120px;
+    margin: 30px auto;
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+}
 
-        body {
-            margin: 0;
-            background: var(--background);
-            font-family: Arial, sans-serif;
-            color: #1e293b;
-        }
+h2 {
+    color: #2864e8;
+    margin-top: 10px;
+}
 
-        .sidebar {
-            width: 250px;
-            min-height: 100vh;
-            position: fixed;
-            top: 0;
-            left: 0;
-            padding: 24px 16px;
-            background: var(--sidebar);
-            color: white;
-            z-index: 1000;
-        }
+.subtitle {
+    margin-bottom: 25px;
+}
 
-        .brand {
-            font-size: 21px;
-            font-weight: bold;
-            padding: 8px 12px 28px;
-        }
+.menu {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 25px;
+}
 
-        .brand small {
-            display: block;
-            margin-top: 7px;
-            color: #bfdbfe;
-            font-size: 12px;
-            font-weight: normal;
-        }
+.menu a {
+    text-decoration: none;
+    background: #2864e8;
+    color: white;
+    padding: 10px 16px;
+    border-radius: 5px;
+    font-size: 14px;
+}
 
-        .menu-label {
-            color: #94a3b8;
-            font-size: 11px;
-            text-transform: uppercase;
-            padding: 10px 12px;
-            letter-spacing: 1px;
-        }
+.menu a:hover {
+    background: #174bc0;
+}
 
-        .sidebar a {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            color: #dbeafe;
-            text-decoration: none;
-            padding: 12px;
-            margin: 4px 0;
-            border-radius: 9px;
-            font-size: 14px;
-        }
+.cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    margin-bottom: 25px;
+}
 
-        .sidebar a:hover,
-        .sidebar a.active {
-            background: var(--sidebar-hover);
-            color: white;
-        }
+.card {
+    border: 1px solid #ddd;
+    padding: 20px;
+    border-radius: 7px;
+    background: #fff;
+}
 
-        .sidebar a.active {
-            border-left: 3px solid #60a5fa;
-        }
+.card h3 {
+    margin: 0 0 12px;
+    font-size: 16px;
+}
 
-        .main {
-            margin-left: 250px;
-            padding: 28px;
-        }
+.card h1 {
+    color: #2864e8;
+    margin: 0;
+    font-size: 30px;
+}
 
-        .topbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 16px;
-            margin-bottom: 28px;
-        }
+.card p {
+    color: #666;
+    font-size: 14px;
+}
 
-        .page-title {
-            font-size: 25px;
-            font-weight: bold;
-            margin-bottom: 6px;
-        }
+.section {
+    border: 1px solid #ddd;
+    border-radius: 7px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
 
-        .muted {
-            color: #64748b;
-            font-size: 13px;
-        }
+.section-header {
+    padding: 15px;
+    border-bottom: 1px solid #ddd;
+}
 
-        .profile {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: white;
-            padding: 10px 14px;
-            border-radius: 12px;
-            box-shadow: 0 3px 15px #0f172a08;
-        }
+.section-header h3 {
+    margin: 0;
+}
 
-        .avatar {
-            display: grid;
-            place-items: center;
-            background: #dbeafe;
-            color: #1d4ed8;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-        }
+.section-body {
+    padding: 15px;
+}
 
-        .stat-card {
-            border: 0;
-            border-radius: 16px;
-            padding: 22px;
-            background: white;
-            height: 100%;
-            box-shadow: 0 4px 18px #0f172a08;
-        }
+.btn {
+    display: inline-block;
+    background: #2864e8;
+    color: white;
+    text-decoration: none;
+    padding: 9px 13px;
+    border-radius: 5px;
+    font-size: 14px;
+}
 
-        .stat-icon {
-            width: 48px;
-            height: 48px;
-            display: grid;
-            place-items: center;
-            border-radius: 13px;
-            font-size: 23px;
-            margin-bottom: 20px;
-        }
+.btn:hover {
+    background: #174bc0;
+}
 
-        .blue { background: #dbeafe; color: #2563eb; }
-        .green { background: #dcfce7; color: #16a34a; }
-        .orange { background: #ffedd5; color: #ea580c; }
-        .purple { background: #ede9fe; color: #7c3aed; }
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
 
-        .stat-number {
-            font-size: 30px;
-            font-weight: bold;
-            margin: 6px 0;
-        }
+th {
+    background: #2864e8;
+    color: white;
+    padding: 12px;
+    text-align: left;
+}
 
-        .panel {
-            border: 0;
-            border-radius: 16px;
-            overflow: hidden;
-            box-shadow: 0 4px 18px #0f172a08;
-        }
+td {
+    padding: 12px;
+    border: 1px solid #ddd;
+}
 
-        .panel-heading {
-            padding: 20px 22px;
-            background: white;
-            border-bottom: 1px solid #eef2f7;
-        }
+.empty {
+    text-align: center;
+    color: #777;
+}
 
-        .table td, .table th {
-            padding: 15px 18px;
-            vertical-align: middle;
-            font-size: 13px;
-        }
+@media(max-width: 700px) {
+    .container {
+        margin: 10px;
+        padding: 15px;
+    }
 
-        .active-year {
-            background: linear-gradient(120deg, #1d4ed8, #4338ca);
-            color: white;
-            padding: 24px;
-            border-radius: 16px;
-            height: 100%;
-        }
+    .cards {
+        grid-template-columns: 1fr;
+    }
 
-        .active-year .year {
-            font-size: 28px;
-            font-weight: bold;
-            margin: 14px 0 5px;
-        }
-
-        .active-year .semester {
-            display: inline-block;
-            padding: 6px 12px;
-            border-radius: 30px;
-            background: #ffffff26;
-            font-size: 12px;
-        }
-
-        .quick-link {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            padding: 15px 0;
-            border-bottom: 1px solid #eef2f7;
-            color: #334155;
-            text-decoration: none;
-        }
-
-        .quick-link:last-child { border-bottom: 0; }
-        .quick-link:hover { color: var(--primary); }
-
-        .footer {
-            margin-top: 30px;
-            padding: 18px 0;
-            color: #94a3b8;
-            font-size: 12px;
-            text-align: center;
-        }
-
-        @media (max-width: 768px) {
-            .sidebar {
-                position: static;
-                width: 100%;
-                min-height: auto;
-                padding: 12px;
-            }
-
-            .brand { padding: 10px; }
-
-            .sidebar nav {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 4px;
-            }
-
-            .sidebar nav a {
-                padding: 9px;
-                font-size: 12px;
-            }
-
-            .menu-label { width: 100%; }
-
-            .main {
-                margin-left: 0;
-                padding: 18px;
-            }
-
-            .topbar {
-                align-items: flex-start;
-                flex-direction: column;
-            }
-        }
-    </style>
+    table {
+        font-size: 13px;
+    }
+}
+</style>
 </head>
+
 <body>
 
-<aside class="sidebar">
-    <div class="brand">
-        <i class="bi bi-mortarboard-fill me-2"></i>
-        UKK-2026
-        <small>Sistem Informasi Sekolah</small>
+<div class="container">
+
+    <h2>Dashboard</h2>
+    <p class="subtitle">
+        Selamat datang di Sistem Informasi Sekolah UKK-2026.
+    </p>
+
+    <div class="menu">
+        <a href="dashboard.php?page=dashboard" target="_top">Dashboard</a>
+        <a href="dashboard.php?page=datasiswa" target="_top">Data Siswa</a>
+        <a href="dashboard.php?page=datakelas" target="_top">Data Kelas</a>
+        <a href="dashboard.php?page=tahun_ajaran" target="_top">Tahun Ajaran</a>
+        <a href="logout.php" target="_top">Keluar</a>
     </div>
 
-    <nav>
-        <div class="menu-label">Menu Utama</div>
+    <h3>Informasi Sistem</h3>
 
-        <a href="index.php" class="active">
-            <i class="bi bi-grid-1x2-fill"></i> Dashboard
-        </a>
-
-        <a href="datasiswa.php">
-            <i class="bi bi-people-fill"></i> Data Siswa
-        </a>
-
-        <a href="datakelas.php">
-            <i class="bi bi-building"></i> Data Kelas
-        </a>
-
-        <div class="menu-label">Pengaturan</div>
-
-        <a href="tahunajaran.php">
-            <i class="bi bi-calendar3"></i> Tahun Ajaran
-        </a>
-    </nav>
-</aside>
-
-<main class="main">
-    <header class="topbar">
-        <div>
-            <div class="page-title">Dashboard</div>
-            <div class="muted">
-                Selamat datang di panel administrasi UKK-2026.
-            </div>
+    <div class="cards">
+        <div class="card">
+            <h3>Total Siswa</h3>
+            <h1><?= number_format((int)$ringkasan['total_siswa']) ?></h1>
+            <p>Jumlah siswa terdaftar</p>
         </div>
 
-        <div class="profile">
-            <div class="avatar">
-                <i class="bi bi-person-fill"></i>
-            </div>
-            <div>
-                <div class="fw-bold small">Administrator</div>
-                <div class="muted">Panel Admin</div>
-            </div>
-        </div>
-    </header>
-
-    <section class="row g-3 mb-4">
-        <div class="col-12 col-sm-6 col-xl-3">
-            <div class="stat-card">
-                <div class="stat-icon blue">
-                    <i class="bi bi-people-fill"></i>
-                </div>
-                <div class="muted">Total Siswa</div>
-                <div class="stat-number"><?= $totalSiswa ?></div>
-                <div class="muted">Data siswa terdaftar</div>
-            </div>
+        <div class="card">
+            <h3>Total Kelas</h3>
+            <h1><?= number_format((int)$ringkasan['total_kelas']) ?></h1>
+            <p>Jumlah kelas tersedia</p>
         </div>
 
-        <div class="col-12 col-sm-6 col-xl-3">
-            <div class="stat-card">
-                <div class="stat-icon green">
-                    <i class="bi bi-building"></i>
-                </div>
-                <div class="muted">Total Kelas</div>
-                <div class="stat-number"><?= $totalKelas ?></div>
-                <div class="muted">Kelas terdaftar</div>
-            </div>
+        <div class="card">
+            <h3>Tahun Ajaran</h3>
+            <h1><?= number_format((int)$ringkasan['total_tahun']) ?></h1>
+            <p>Data tahun ajaran</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-header">
+            <h3>Tahun Ajaran Aktif</h3>
         </div>
 
-        <div class="col-12 col-sm-6 col-xl-3">
-            <div class="stat-card">
-                <div class="stat-icon orange">
-                    <i class="bi bi-calendar-check"></i>
-                </div>
-                <div class="muted">Tahun Ajaran</div>
-                <div class="stat-number"><?= $totalTahun ?></div>
-                <div class="muted">Data tahun ajaran</div>
-            </div>
-        </div>
-
-        <div class="col-12 col-sm-6 col-xl-3">
-            <div class="stat-card">
-                <div class="stat-icon purple">
-                    <i class="bi bi-shield-check"></i>
-                </div>
-                <div class="muted">Status Sistem</div>
-                <div class="stat-number fs-4">Online</div>
-                <div class="muted">Halaman admin tersedia</div>
-            </div>
-        </div>
-    </section>
-
-    <section class="row g-4 mb-4">
-        <div class="col-lg-7">
-            <div class="active-year">
-                <div>
-                    <i class="bi bi-calendar2-week fs-3"></i>
-                </div>
-                <div class="mt-3">Tahun Ajaran Aktif</div>
-
-                <?php if ($tahunAktif): ?>
-                    <div class="year">
-                        <?= e($tahunAktif['tahun_ajaran']) ?>
-                    </div>
-                    <span class="semester">
-                        Semester <?= e($tahunAktif['semester']) ?>
-                    </span>
-                <?php else: ?>
-                    <div class="year">Belum Diatur</div>
-                    <p class="small mb-3">
-                        Belum ada tahun ajaran aktif di database.
-                    </p>
-                <?php endif; ?>
-
-                <div class="mt-4">
-                    <a href="tahunajaran.php"
-                       class="btn btn-light btn-sm text-primary fw-bold">
-                        Kelola Tahun Ajaran
-                        <i class="bi bi-arrow-right ms-1"></i>
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-5">
-            <div class="panel bg-white h-100">
-                <div class="panel-heading">
-                    <h6 class="fw-bold mb-1">Akses Cepat</h6>
-                    <div class="muted">Menu pengelolaan data</div>
-                </div>
-
-                <div class="p-3 px-4">
-                    <a href="datasiswa.php" class="quick-link">
-                        <span>
-                            <i class="bi bi-person-lines-fill me-2"></i>
-                            Kelola Data Siswa
-                        </span>
-                        <i class="bi bi-chevron-right"></i>
-                    </a>
-
-                    <a href="datakelas.php" class="quick-link">
-                        <span>
-                            <i class="bi bi-buildings me-2"></i>
-                            Kelola Data Kelas
-                        </span>
-                        <i class="bi bi-chevron-right"></i>
-                    </a>
-
-                    <a href="tahunajaran.php" class="quick-link">
-                        <span>
-                            <i class="bi bi-calendar-event me-2"></i>
-                            Kelola Tahun Ajaran
-                        </span>
-                        <i class="bi bi-chevron-right"></i>
-                    </a>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section class="panel bg-white">
-        <div class="panel-heading d-flex justify-content-between
-                    align-items-center flex-wrap gap-2">
-            <div>
-                <h6 class="fw-bold mb-1">Data Tahun Ajaran</h6>
-                <div class="muted">Lima data tahun ajaran terbaru</div>
-            </div>
-
-            <a href="tahunajaran.php"
-               class="btn btn-primary btn-sm">
-                <i class="bi bi-gear me-1"></i> Kelola Data
+        <div class="section-body">
+            <?php if ($tahunAktif): ?>
+                <p><strong><?= aman($tahunAktif['nama']) ?></strong></p>
+                <p>
+                    Periode:
+                    <?= aman($tahunAktif['tanggal_mulai']) ?>
+                    sampai
+                    <?= aman($tahunAktif['tanggal_selesai']) ?>
+                </p>
+            <?php else: ?>
+                <p>Belum ada tahun ajaran aktif.</p>
+            <?php endif; ?>
+            <a href="dashboard.php?page=tahun_ajaran" class="btn" target="_top">
+                Kelola Tahun Ajaran
             </a>
         </div>
+    </div>
 
-        <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>No.</th>
-                        <th>Tahun Ajaran</th>
-                        <th>Semester</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if ($daftarTahun && mysqli_num_rows($daftarTahun) > 0): ?>
-                        <?php $no = 1; ?>
-                        <?php while ($row = mysqli_fetch_assoc($daftarTahun)): ?>
-                            <tr>
-                                <td><?= $no++ ?></td>
-                                <td class="fw-semibold">
-                                    <?= e($row['tahun_ajaran']) ?>
-                                </td>
-                                <td><?= e($row['semester']) ?></td>
-                                <td>
-                                    <?php if ($row['status'] === 'Aktif'): ?>
-                                        <span class="badge text-bg-success">
-                                            Aktif
-                                        </span>
-                                    <?php else: ?>
-                                        <span class="badge text-bg-secondary">
-                                            Tidak Aktif
-                                        </span>
-                                    <?php endif; ?>
-                                </td>
-                            </tr>
-                        <?php endwhile; ?>
-                    <?php else: ?>
-                        <tr>
-                            <td colspan="4"
-                                class="text-center text-secondary py-4">
-                                Belum ada data tahun ajaran.
-                                <a href="tahunajaran.php">Tambah sekarang</a>
-                            </td>
-                        </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+    <div class="section">
+        <div class="section-header">
+            <h3>Akses Menu</h3>
         </div>
-    </section>
 
-    <footer class="footer">
-        &copy; <?= date('Y') ?> UKK-2026
-        &middot; Sistem Informasi Sekolah
-    </footer>
-</main>
+        <div class="section-body">
+            <a href="dashboard.php?page=datasiswa" class="btn" target="_top">Data Siswa</a>
+            <a href="dashboard.php?page=datakelas" class="btn" target="_top">Data Kelas</a>
+            <a href="dashboard.php?page=tahun_ajaran" class="btn" target="_top">Tahun Ajaran</a>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-header">
+            <h3>Data Tahun Ajaran</h3>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>No.</th>
+                    <th>Tahun Ajaran</th>
+                    <th>Periode</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                <?php $no = 1; ?>
+                <?php while ($tahun = mysqli_fetch_assoc($hasilDaftarTahun)): ?>
+                    <tr>
+                        <td><?= $no++ ?></td>
+                        <td><?= aman($tahun['nama']) ?></td>
+                        <td>
+                            <?= aman($tahun['tanggal_mulai']) ?>
+                            s.d.
+                            <?= aman($tahun['tanggal_selesai']) ?>
+                        </td>
+                        <td><?= (int)$tahun['status_aktif'] === 1 ? 'Aktif' : 'Tidak Aktif' ?></td>
+                    </tr>
+                <?php endwhile; ?>
+                <?php if ($no === 1): ?>
+                    <tr>
+                        <td colspan="4" class="empty">Belum ada data tahun ajaran.</td>
+                    </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+
+</div>
 
 </body>
 </html>
-2. Struktur folder proyek
-Pastikan folder kamu seperti berikut:
-

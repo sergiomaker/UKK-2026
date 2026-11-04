@@ -1,10 +1,10 @@
-
 <?php
 require_once __DIR__ . '/cek_session.php';
 
 mysqli_set_charset($koneksi, "utf8mb4");
 
-function aman($data) {
+function aman($data)
+{
     return htmlspecialchars((string)$data, ENT_QUOTES, 'UTF-8');
 }
 
@@ -20,8 +20,10 @@ if (isset($_POST['tambah'])) {
     $no_hp = trim($_POST['no_hp'] ?? '');
     $alamat = trim($_POST['alamat'] ?? '');
 
-    if ($nip === '' || $nama === '' || $kelas === '' ||
-        !in_array($jk, ['Laki-laki', 'Perempuan'], true)) {
+    if (
+        $nip === '' || $nama === '' || $kelas === '' ||
+        !in_array($jk, ['Laki-laki', 'Perempuan'], true)
+    ) {
         $error = 'NIP, nama, jenis kelamin, dan kelas wajib diisi.';
     } else {
         try {
@@ -31,11 +33,17 @@ if (isset($_POST['tambah'])) {
                 VALUES (?, ?, ?, ?, ?, ?)"
             );
             $stmt->bind_param(
-                "ssssss", $nip, $nama, $jk, $kelas, $no_hp, $alamat
+                "ssssss",
+                $nip,
+                $nama,
+                $jk,
+                $kelas,
+                $no_hp,
+                $alamat
             );
             $stmt->execute();
 
-            header("Location: wali_kelas.php?pesan=tambah");
+            header("Location: kelola_wali_kelas.php?pesan=tambah");
             exit;
         } catch (mysqli_sql_exception $e) {
             $error = $e->getCode() == 1062
@@ -55,8 +63,10 @@ if (isset($_POST['edit'])) {
     $no_hp = trim($_POST['no_hp'] ?? '');
     $alamat = trim($_POST['alamat'] ?? '');
 
-    if ($id <= 0 || $nip === '' || $nama === '' || $kelas === '' ||
-        !in_array($jk, ['Laki-laki', 'Perempuan'], true)) {
+    if (
+        $id <= 0 || $nip === '' || $nama === '' || $kelas === '' ||
+        !in_array($jk, ['Laki-laki', 'Perempuan'], true)
+    ) {
         $error = 'Data edit tidak lengkap atau tidak valid.';
     } else {
         try {
@@ -67,12 +77,18 @@ if (isset($_POST['edit'])) {
                 WHERE id=?"
             );
             $stmt->bind_param(
-                "ssssssi", $nip, $nama, $jk, $kelas,
-                $no_hp, $alamat, $id
+                "ssssssi",
+                $nip,
+                $nama,
+                $jk,
+                $kelas,
+                $no_hp,
+                $alamat,
+                $id
             );
             $stmt->execute();
 
-            header("Location: wali_kelas.php?pesan=edit");
+            header("Location: kelola_wali_kelas.php?pesan=edit");
             exit;
         } catch (mysqli_sql_exception $e) {
             $error = $e->getCode() == 1062
@@ -88,13 +104,13 @@ if (isset($_POST['hapus'])) {
 
     if ($id > 0) {
         $stmt = $koneksi->prepare(
-            "DELETE FROM t_wali_kelas WHERE id=?"
+            "DELETE FROM wali_kelas WHERE id=?"
         );
         $stmt->bind_param("i", $id);
         $stmt->execute();
     }
 
-    header("Location: wali_kelas.php?pesan=hapus");
+    header("Location: kelola_wali_kelas.php?pesan=hapus");
     exit;
 }
 
@@ -105,7 +121,7 @@ if (isset($_GET['edit'])) {
     $id = (int)$_GET['edit'];
 
     $stmt = $koneksi->prepare(
-        "SELECT * FROM t_wali_kelas WHERE id=?"
+        "SELECT * FROM wali_kelas WHERE id=?"
     );
     $stmt->bind_param("i", $id);
     $stmt->execute();
@@ -114,7 +130,7 @@ if (isset($_GET['edit'])) {
 
 // Ambil semua data
 $result = $koneksi->query(
-    "SELECT * FROM t_wali_kelas ORDER BY id DESC"
+    "SELECT * FROM wali_kelas ORDER BY id DESC"
 );
 
 $pesan = $_GET['pesan'] ?? '';
@@ -122,300 +138,310 @@ $pesan = $_GET['pesan'] ?? '';
 
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Data Wali Kelas</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Data Wali Kelas</title>
 
-<style>
-* { box-sizing: border-box; }
+    <style>
+        * {
+            box-sizing: border-box;
+        }
 
-body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    background: #F1F5F9;
-    color: #1E293B;
-}
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f3f4f6;
+            color: #1f2937;
+        }
 
-.sidebar {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 220px;
-    padding: 25px 15px;
-    background: #1E293B;
-    color: white;
-}
+        .sidebar {
+            display: none;
+        }
 
-.sidebar h2 {
-    text-align: center;
-    font-size: 20px;
-    margin-bottom: 30px;
-}
+        .main {
+            margin-left: 0;
+            padding: 30px;
+        }
 
-.sidebar a {
-    display: block;
-    padding: 12px;
-    margin-bottom: 8px;
-    color: white;
-    text-decoration: none;
-    border-radius: 7px;
-}
+        h1,
+        h2 {
+            color: #1d4ed8;
+            margin-bottom: 12px;
+        }
 
-.sidebar a:hover,
-.sidebar a.active {
-    background: #3B82F6;
-}
+        .card {
+            background: white;
+            padding: 22px;
+            margin-bottom: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+        }
 
-.main {
-    margin-left: 220px;
-    padding: 30px;
-}
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 15px;
+        }
 
-.card {
-    background: white;
-    padding: 22px;
-    margin-bottom: 25px;
-    border-radius: 12px;
-    box-shadow: 0 3px 12px #0000000D;
-}
+        label {
+            display: block;
+            margin-bottom: 7px;
+            font-size: 14px;
+            font-weight: bold;
+        }
 
-.form-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 15px;
-}
+        input,
+        select,
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font: inherit;
+        }
 
-label {
-    display: block;
-    margin-bottom: 7px;
-    font-size: 14px;
-    font-weight: bold;
-}
+        button,
+        .btn {
+            display: inline-block;
+            border: none;
+            border-radius: 5px;
+            padding: 10px 14px;
+            background: #2563eb;
+            color: white;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 13px;
+        }
 
-input, select, textarea {
-    width: 100%;
-    padding: 11px;
-    border: 1px solid #CBD5E1;
-    border-radius: 7px;
-    font: inherit;
-}
+        button:hover,
+        .btn:hover {
+            background: #1d4ed8;
+        }
 
-button, .btn {
-    display: inline-block;
-    border: none;
-    border-radius: 6px;
-    padding: 10px 14px;
-    background: #1E293B;
-    color: white;
-    cursor: pointer;
-    text-decoration: none;
-    font-size: 13px;
-}
+        .btn-edit {
+            background: #2563eb;
+        }
 
-button:hover, .btn:hover { background: #3B82F6; }
-.btn-edit { background: #3B82F6; }
-.btn-hapus { background: #DC2626; }
+        .btn-hapus {
+            background: #dc2626;
+        }
 
-.alert {
-    padding: 12px;
-    border-radius: 7px;
-    margin-bottom: 15px;
-    background: #DBEAFE;
-}
+        .btn-hapus:hover {
+            background: #b91c1c;
+        }
 
-.alert-error {
-    background: #FEE2E2;
-    color: #B91C1C;
-}
+        .alert {
+            padding: 12px;
+            border-radius: 7px;
+            margin-bottom: 15px;
+            background: #DBEAFE;
+        }
 
-.table-wrap { overflow-x: auto; }
+        .alert-error {
+            background: #FEE2E2;
+            color: #B91C1C;
+        }
 
-table {
-    width: 100%;
-    min-width: 850px;
-    border-collapse: collapse;
-}
+        .table-wrap {
+            overflow-x: auto;
+        }
 
-th, td {
-    padding: 12px;
-    border-bottom: 1px solid #E2E8F0;
-    text-align: left;
-    font-size: 14px;
-}
+        table {
+            width: 100%;
+            min-width: 850px;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
 
-th { background: #1E293B; color: white; }
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+            font-size: 14px;
+        }
 
-.aksi { display: flex; gap: 6px; }
+        th {
+            background: #2563eb;
+            color: white;
+        }
 
-@media (max-width: 700px) {
-    .sidebar {
-        position: static;
-        width: 100%;
-    }
-    .sidebar a { display: inline-block; }
-    .main { margin-left: 0; padding: 15px; }
-    .form-grid { grid-template-columns: 1fr; }
-}
-</style>
+        .aksi {
+            display: flex;
+            gap: 6px;
+        }
+
+        @media (max-width: 700px) {
+            .sidebar {
+                position: static;
+                width: 100%;
+            }
+
+            .sidebar a {
+                display: inline-block;
+            }
+
+            .main {
+                margin-left: 0;
+                padding: 15px;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 
 <body>
 
-<div class="sidebar">
-    <h2>ADMIN SEKOLAH</h2>
-    <a href="dashboard.php">Dashboard</a>
-    <a href="data_siswa.php">Data Siswa</a>
-    <a href="data_guru.php">Data Guru</a>
-    <a href="wali_kelas.php" class="active">Wali Kelas</a>
-    <a href="logout.php">Logout</a>
-</div>
+    <main class="main">
+        <h1>Data Wali Kelas</h1>
+        <p>Pengelolaan data wali kelas sekolah.</p>
 
-<main class="main">
-<h1>Data Wali Kelas</h1>
-<p>Pengelolaan data wali kelas sekolah.</p>
+        <?php if ($error !== ''): ?>
+            <div class="alert alert-error"><?= aman($error) ?></div>
+        <?php endif; ?>
 
-<?php if ($error !== ''): ?>
-    <div class="alert alert-error"><?= aman($error) ?></div>
-<?php endif; ?>
-
-<?php if ($pesan !== ''): ?>
-    <div class="alert">
-        <?= aman([
-            'tambah' => 'Data wali kelas berhasil ditambahkan.',
-            'edit' => 'Data wali kelas berhasil diperbarui.',
-            'hapus' => 'Proses hapus selesai.'
-        ][$pesan] ?? 'Proses selesai.') ?>
-    </div>
-<?php endif; ?>
-
-<section class="card">
-<h2><?= $data_edit ? 'Edit Wali Kelas' : 'Tambah Wali Kelas' ?></h2>
-
-<form method="POST" action="wali_kelas.php">
-    <?php if ($data_edit): ?>
-        <input type="hidden" name="id"
-               value="<?= aman($data_edit['id']) ?>">
-    <?php endif; ?>
-
-    <div class="form-grid">
-        <div>
-            <label>NIP</label>
-            <input name="nip" maxlength="30"
-                   value="<?= aman($data_edit['nip'] ?? '') ?>" required>
-        </div>
-
-        <div>
-            <label>Nama Wali Kelas</label>
-            <input name="nama_wali_kelas" maxlength="100"
-                   value="<?= aman($data_edit['nama_wali_kelas'] ?? '') ?>"
-                   required>
-        </div>
-
-        <div>
-            <label>Jenis Kelamin</label>
-            <select name="jenis_kelamin" required>
-                <option value="">-- Pilih --</option>
-                <option value="Laki-laki"
-                    <?= ($data_edit['jenis_kelamin'] ?? '') === 'Laki-laki'
-                        ? 'selected' : '' ?>>Laki-laki</option>
-                <option value="Perempuan"
-                    <?= ($data_edit['jenis_kelamin'] ?? '') === 'Perempuan'
-                        ? 'selected' : '' ?>>Perempuan</option>
-            </select>
-        </div>
-
-        <div>
-            <label>Kelas</label>
-            <input name="kelas" maxlength="20"
-                   placeholder="Contoh: X RPL 1"
-                   value="<?= aman($data_edit['kelas'] ?? '') ?>" required>
-        </div>
-
-        <div>
-            <label>Nomor HP</label>
-            <input name="no_hp" maxlength="20"
-                   value="<?= aman($data_edit['no_hp'] ?? '') ?>">
-        </div>
-
-        <div>
-            <label>Alamat</label>
-            <textarea name="alamat" rows="3"><?= aman($data_edit['alamat'] ?? '') ?></textarea>
-        </div>
-    </div>
-
-    <br>
-    <button type="submit" name="<?= $data_edit ? 'edit' : 'tambah' ?>">
-        <?= $data_edit ? 'Simpan Perubahan' : 'Tambah Data' ?>
-    </button>
-
-    <?php if ($data_edit): ?>
-        <a href="wali_kelas.php" class="btn">Batal</a>
-    <?php endif; ?>
-</form>
-</section>
-
-<section class="card">
-<h2>Daftar Wali Kelas</h2>
-
-<div class="table-wrap">
-<table>
-<thead>
-<tr>
-    <th>No</th>
-    <th>NIP</th>
-    <th>Nama</th>
-    <th>Jenis Kelamin</th>
-    <th>Kelas</th>
-    <th>No. HP</th>
-    <th>Alamat</th>
-    <th>Aksi</th>
-</tr>
-</thead>
-<tbody>
-<?php if ($result->num_rows > 0): ?>
-    <?php $no = 1; ?>
-    <?php while ($row = $result->fetch_assoc()): ?>
-    <tr>
-        <td><?= $no++ ?></td>
-        <td><?= aman($row['nip']) ?></td>
-        <td><?= aman($row['nama_wali_kelas']) ?></td>
-        <td><?= aman($row['jenis_kelamin']) ?></td>
-        <td><?= aman($row['kelas']) ?></td>
-        <td><?= aman($row['no_hp']) ?></td>
-        <td><?= aman($row['alamat']) ?></td>
-        <td>
-            <div class="aksi">
-                <a class="btn btn-edit"
-                   href="wali_kelas.php?edit=<?= (int)$row['id'] ?>">
-                   Edit
-                </a>
-
-                <form method="POST" action="wali_kelas.php"
-                      onsubmit="return confirm('Yakin ingin menghapus data ini?')">
-                    <input type="hidden" name="id"
-                           value="<?= (int)$row['id'] ?>">
-                    <button class="btn-hapus" type="submit" name="hapus">
-                        Hapus
-                    </button>
-                </form>
+        <?php if ($pesan !== ''): ?>
+            <div class="alert">
+                <?= aman([
+                    'tambah' => 'Data wali kelas berhasil ditambahkan.',
+                    'edit' => 'Data wali kelas berhasil diperbarui.',
+                    'hapus' => 'Proses hapus selesai.'
+                ][$pesan] ?? 'Proses selesai.') ?>
             </div>
-        </td>
-    </tr>
-    <?php endwhile; ?>
-<?php else: ?>
-    <tr>
-        <td colspan="8" style="text-align:center">
-            Belum ada data wali kelas.
-        </td>
-    </tr>
-<?php endif; ?>
-</tbody>
-</table>
-</div>
-</section>
-</main>
-</body>
-</html>
+        <?php endif; ?>
 
+        <section class="card">
+            <h2><?= $data_edit ? 'Edit Wali Kelas' : 'Tambah Wali Kelas' ?></h2>
+
+            <form method="POST" action="kelola_wali_kelas.php">
+                <?php if ($data_edit): ?>
+                    <input type="hidden" name="id"
+                        value="<?= aman($data_edit['id']) ?>">
+                <?php endif; ?>
+
+                <div class="form-grid">
+                    <div>
+                        <label>NIP</label>
+                        <input name="nip" maxlength="30"
+                            value="<?= aman($data_edit['nip'] ?? '') ?>" required>
+                    </div>
+
+                    <div>
+                        <label>Nama Wali Kelas</label>
+                        <input name="nama_wali_kelas" maxlength="100"
+                            value="<?= aman($data_edit['nama_wali_kelas'] ?? '') ?>"
+                            required>
+                    </div>
+
+                    <div>
+                        <label>Jenis Kelamin</label>
+                        <select name="jenis_kelamin" required>
+                            <option value="">-- Pilih --</option>
+                            <option value="Laki-laki"
+                                <?= ($data_edit['jenis_kelamin'] ?? '') === 'Laki-laki'
+                                    ? 'selected' : '' ?>>Laki-laki</option>
+                            <option value="Perempuan"
+                                <?= ($data_edit['jenis_kelamin'] ?? '') === 'Perempuan'
+                                    ? 'selected' : '' ?>>Perempuan</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label>Kelas</label>
+                        <input name="kelas" maxlength="20"
+                            placeholder="Contoh: X RPL 1"
+                            value="<?= aman($data_edit['kelas'] ?? '') ?>" required>
+                    </div>
+
+                    <div>
+                        <label>Nomor HP</label>
+                        <input name="no_hp" maxlength="20"
+                            value="<?= aman($data_edit['no_hp'] ?? '') ?>">
+                    </div>
+
+                    <div>
+                        <label>Alamat</label>
+                        <textarea name="alamat" rows="3"><?= aman($data_edit['alamat'] ?? '') ?></textarea>
+                    </div>
+                </div>
+
+                <br>
+                <button type="submit" name="<?= $data_edit ? 'edit' : 'tambah' ?>">
+                    <?= $data_edit ? 'Simpan Perubahan' : 'Tambah Data' ?>
+                </button>
+
+                <?php if ($data_edit): ?>
+                    <a href="kelola_wali_kelas.php" class="btn">Batal</a>
+                <?php endif; ?>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2>Daftar Wali Kelas</h2>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            <th>NIP</th>
+                            <th>Nama</th>
+                            <th>Jenis Kelamin</th>
+                            <th>Kelas</th>
+                            <th>No. HP</th>
+                            <th>Alamat</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if ($result->num_rows > 0): ?>
+                            <?php $no = 1; ?>
+                            <?php while ($row = $result->fetch_assoc()): ?>
+                                <tr>
+                                    <td><?= $no++ ?></td>
+                                    <td><?= aman($row['nip']) ?></td>
+                                    <td><?= aman($row['nama_wali_kelas']) ?></td>
+                                    <td><?= aman($row['jenis_kelamin']) ?></td>
+                                    <td><?= aman($row['kelas']) ?></td>
+                                    <td><?= aman($row['no_hp']) ?></td>
+                                    <td><?= aman($row['alamat']) ?></td>
+                                    <td>
+                                        <div class="aksi">
+                                            <a class="btn btn-edit"
+                                                href="kelola_wali_kelas.php?edit=<?= (int)$row['id'] ?>">
+                                                Edit
+                                            </a>
+
+                                            <form method="POST" action="kelola_wali_kelas.php"
+                                                onsubmit="return confirm('Yakin ingin menghapus data ini?')">
+                                                <input type="hidden" name="id"
+                                                    value="<?= (int)$row['id'] ?>">
+                                                <button class="btn-hapus" type="submit" name="hapus">
+                                                    Hapus
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endwhile; ?>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="8" style="text-align:center">
+                                    Belum ada data wali kelas.
+                                </td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</body>
+
+</html>

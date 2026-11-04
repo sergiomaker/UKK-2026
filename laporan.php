@@ -1,16 +1,38 @@
 <?php
-require_once __DIR__ . '/includes/cek_session.php';
-require_once __DIR__ . '/koneksi.php';
+require_once __DIR__ . '/cek_session.php';
 
-// Mengambil data siswa dari database
-$stmt = $pdo->query(
-    "SELECT id, nis, nama, kelas FROM siswa ORDER BY nama ASC"
+$result = mysqli_query(
+    $koneksi,
+    "SELECT s.nis, s.nama,
+            CASE
+                WHEN k.id IS NULL THEN 'Belum ditempatkan'
+                ELSE CONCAT_WS(' ', k.tingkat, k.nama)
+            END AS kelas
+     FROM t_siswa s
+     LEFT JOIN t_kelas_siswa ks
+       ON ks.id = (
+           SELECT ks_terbaru.id
+           FROM t_kelas_siswa ks_terbaru
+           WHERE ks_terbaru.siswa_id = s.id
+             AND ks_terbaru.status_aktif = 1
+           ORDER BY ks_terbaru.tanggal_mulai DESC, ks_terbaru.id DESC
+           LIMIT 1
+       )
+     LEFT JOIN t_kelas k ON k.id = ks.kelas_id
+     ORDER BY s.nama ASC, s.nis ASC"
 );
-$dataSiswa = $stmt->fetchAll();
+$dataSiswa = [];
+
+if ($result) {
+    while ($row = mysqli_fetch_assoc($result)) {
+        $dataSiswa[] = $row;
+    }
+}
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -27,46 +49,8 @@ $dataSiswa = $stmt->fetchAll();
             background: #f4f6f9;
         }
 
-        .sidebar {
-            width: 230px;
-            height: 100vh;
-            position: fixed;
-            top: 0;
-            left: 0;
-            background: #212529;
-            color: white;
-            padding: 20px 12px;
-        }
-
-        .sidebar h3 {
-            margin: 0 0 25px;
-            padding-left: 10px;
-        }
-
-        .sidebar a {
-            display: block;
-            padding: 13px 12px;
-            margin-bottom: 5px;
-            text-decoration: none;
-            color: white;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-
-        .sidebar a:hover,
-        .sidebar a.active {
-            background: #0d6efd;
-        }
-
-        .sidebar .logout {
-            color: #ff6b75;
-            border-top: 1px solid #444;
-            margin-top: 25px;
-            border-radius: 0;
-        }
-
         .content {
-            margin-left: 230px;
+            margin-left: 0;
             padding: 25px;
         }
 
@@ -84,7 +68,9 @@ $dataSiswa = $stmt->fetchAll();
             margin: 20px 0;
         }
 
-        input, select, button {
+        input,
+        select,
+        button {
             padding: 10px;
             border: 1px solid #ccc;
             border-radius: 5px;
@@ -115,7 +101,8 @@ $dataSiswa = $stmt->fetchAll();
             border-collapse: collapse;
         }
 
-        th, td {
+        th,
+        td {
             border: 1px solid #ddd;
             padding: 12px;
             text-align: left;
@@ -136,7 +123,10 @@ $dataSiswa = $stmt->fetchAll();
         }
 
         @media print {
-            .sidebar, .toolbar, .no-print {
+
+            .sidebar,
+            .toolbar,
+            .no-print {
                 display: none !important;
             }
 
@@ -171,94 +161,84 @@ $dataSiswa = $stmt->fetchAll();
 
 <body>
 
-<aside class="sidebar">
-    <h3>My Website</h3>
+    <main class="content">
+        <h2>Laporan Data Siswa</h2>
+        <p>Halaman laporan data siswa sekolah.</p>
 
-    <a href="dashboard.php">Dashboard</a>
-    <a href="kelas.php">Kelas</a>
-    <a href="laporan.php" class="active">Laporan</a>
-    <a href="about.php">About Me</a>
-    <a href="logout.php" class="logout">Logout</a>
-</aside>
+        <section class="panel">
+            <h3>Daftar Siswa</h3>
 
-<main class="content">
-    <h2>Laporan Data Siswa</h2>
-    <p>Halaman laporan data siswa sekolah.</p>
+            <div class="toolbar no-print">
+                <input
+                    type="text"
+                    id="cari"
+                    placeholder="Cari NIS, nama, atau kelas...">
 
-    <section class="panel">
-        <h3>Daftar Siswa</h3>
-
-        <div class="toolbar no-print">
-            <input
-                type="text"
-                id="cari"
-                placeholder="Cari NIS, nama, atau kelas..."
-            >
-
-            <button type="button" class="print-btn"
+                <button type="button" class="print-btn"
                     onclick="window.print()">
-                Cetak Laporan
-            </button>
-        </div>
+                    Cetak Laporan
+                </button>
+            </div>
 
-        <div class="table-wrapper">
-            <table id="tabelSiswa">
-                <thead>
-                    <tr>
-                        <th>No</th>
-                        <th>NIS</th>
-                        <th>Nama Siswa</th>
-                        <th>Kelas</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    <?php if (count($dataSiswa) > 0): ?>
-                        <?php foreach ($dataSiswa as $i => $siswa): ?>
-                            <tr>
-                                <td><?= $i + 1 ?></td>
-                                <td><?= htmlspecialchars((string)$siswa['nis']) ?></td>
-                                <td><?= htmlspecialchars($siswa['nama']) ?></td>
-                                <td><?= htmlspecialchars($siswa['kelas']) ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php else: ?>
+            <div class="table-wrapper">
+                <table id="tabelSiswa">
+                    <thead>
                         <tr>
-                            <td colspan="4">Belum ada data siswa.</td>
+                            <th>No</th>
+                            <th>NIS</th>
+                            <th>Nama Siswa</th>
+                            <th>Kelas</th>
                         </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
+                    </thead>
 
-        <p class="jumlah" id="jumlahData">
-            Total data: <?= count($dataSiswa) ?> siswa
-        </p>
-    </section>
-</main>
+                    <tbody>
+                        <?php if (count($dataSiswa) > 0): ?>
+                            <?php foreach ($dataSiswa as $i => $siswa): ?>
+                                <tr>
+                                    <td><?= $i + 1 ?></td>
+                                    <td><?= htmlspecialchars((string)$siswa['nis']) ?></td>
+                                    <td><?= htmlspecialchars($siswa['nama']) ?></td>
+                                    <td><?= htmlspecialchars($siswa['kelas']) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="4">Belum ada data siswa.</td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
 
-<script>
-    const inputCari = document.getElementById('cari');
-    const tabel = document.getElementById('tabelSiswa');
-    const jumlahData = document.getElementById('jumlahData');
+            <p class="jumlah" id="jumlahData">
+                Total data: <?= count($dataSiswa) ?> siswa
+            </p>
+        </section>
+    </main>
 
-    inputCari.addEventListener('input', function () {
-        const kata = this.value.toLowerCase();
-        const baris = tabel.querySelectorAll('tbody tr');
-        let jumlah = 0;
+    <script>
+        const inputCari = document.getElementById('cari');
+        const tabel = document.getElementById('tabelSiswa');
+        const jumlahData = document.getElementById('jumlahData');
 
-        baris.forEach(function (tr) {
-            const cocok = tr.textContent.toLowerCase().includes(kata);
-            tr.style.display = cocok ? '' : 'none';
+        inputCari.addEventListener('input', function() {
+            const kata = this.value.toLowerCase();
+            const baris = tabel.querySelectorAll('tbody tr');
+            let jumlah = 0;
 
-            if (cocok && tr.cells.length === 4) {
-                jumlah++;
-            }
+            baris.forEach(function(tr) {
+                const cocok = tr.textContent.toLowerCase().includes(kata);
+                tr.style.display = cocok ? '' : 'none';
+
+                if (cocok && tr.cells.length === 4) {
+                    jumlah++;
+                }
+            });
+
+            jumlahData.textContent = 'Total data: ' + jumlah + ' siswa';
         });
-
-        jumlahData.textContent = 'Total data: ' + jumlah + ' siswa';
-    });
-</script>
+    </script>
 
 </body>
+
 </html>

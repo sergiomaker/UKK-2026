@@ -16,35 +16,40 @@ $error = "";
 // Menambahkan data siswa
 if (isset($_POST['tambah'])) {
     $nis = trim($_POST['nis'] ?? '');
-    $nama = trim($_POST['nama_siswa'] ?? '');
-    $kelas = trim($_POST['kelas'] ?? '');
+    $nisn = trim($_POST['nisn'] ?? '');
+    $nama = trim($_POST['nama'] ?? '');
     $jk = $_POST['jenis_kelamin'] ?? '';
+    $tanggalLahir = trim($_POST['tanggal_lahir'] ?? '');
     $alamat = trim($_POST['alamat'] ?? '');
-    $no_hp = trim($_POST['no_hp'] ?? '');
+    $tanggalValid = false;
+    $tanggal = DateTime::createFromFormat('!Y-m-d', $tanggalLahir);
+    if ($tanggal && $tanggal->format('Y-m-d') === $tanggalLahir) {
+        $tanggalValid = true;
+    }
 
-    if ($nis === '' || $nama === '' || $kelas === '' ||
-        !in_array($jk, ['Laki-laki', 'Perempuan'], true)) {
+    if (
+        $nis === '' || $nisn === '' || $nama === '' ||
+        !$tanggalValid || $alamat === '' ||
+        !in_array($jk, ['L', 'P'], true)
+    ) {
         $error = "Lengkapi data siswa dengan benar.";
     } else {
-        $stmt = mysqli_prepare(
-            $koneksi,
-            "INSERT INTO siswa
-            (nis, nama_siswa, kelas, jenis_kelamin, alamat, no_hp)
-            VALUES (?, ?, ?, ?, ?, ?)"
-        );
-
-        if (!$stmt) {
-            $error = "Query tambah gagal: " . mysqli_error($koneksi);
-        } else {
+        try {
+            $stmt = mysqli_prepare(
+                $koneksi,
+                "INSERT INTO t_siswa
+                (nis, nisn, nama, jenis_kelamin, tanggal_lahir, alamat, status_aktif, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            );
             mysqli_stmt_bind_param(
                 $stmt,
                 "ssssss",
                 $nis,
+                $nisn,
                 $nama,
-                $kelas,
                 $jk,
+                $tanggalLahir,
                 $alamat,
-                $no_hp
             );
 
             if (mysqli_stmt_execute($stmt)) {
@@ -52,48 +57,53 @@ if (isset($_POST['tambah'])) {
                 header("Location: datasiswa.php?pesan=berhasil");
                 exit;
             } else {
-                $error = "Gagal menyimpan data. Periksa NIS dan struktur tabel.";
+                $error = "Gagal menyimpan data siswa.";
             }
-
             mysqli_stmt_close($stmt);
+        } catch (mysqli_sql_exception $e) {
+            $error = "Gagal menyimpan data siswa. Periksa NIS/NISN dan struktur tabel.";
         }
     }
 }
 
-// Menghapus data berdasarkan NIS
+// Menonaktifkan data berdasarkan NIS agar riwayat penempatan tetap tersimpan.
 if (isset($_POST['hapus'])) {
     $nisHapus = trim($_POST['nis_hapus'] ?? '');
 
     if ($nisHapus !== '') {
-        $stmt = mysqli_prepare(
-            $koneksi,
-            "DELETE FROM siswa WHERE nis = ?"
-        );
-
-        if ($stmt) {
+        try {
+            $stmt = mysqli_prepare(
+                $koneksi,
+                "UPDATE t_siswa
+                 SET status_aktif = 0, updated_at = CURRENT_TIMESTAMP
+                 WHERE nis = ? AND status_aktif = 1"
+            );
             mysqli_stmt_bind_param($stmt, "s", $nisHapus);
 
             if (!mysqli_stmt_execute($stmt)) {
-                $error = "Gagal menghapus data siswa.";
+                $error = "Gagal menonaktifkan data siswa.";
+            } elseif (mysqli_stmt_affected_rows($stmt) === 0) {
+                $error = "Data siswa tidak ditemukan atau sudah dinonaktifkan.";
             }
 
             mysqli_stmt_close($stmt);
-        } else {
-            $error = "Query hapus gagal: " . mysqli_error($koneksi);
+        } catch (mysqli_sql_exception $e) {
+            $error = "Gagal menonaktifkan data siswa.";
         }
     }
 
-    if ($error === '') {
-        header("Location: datasiswa.php?pesan=hapus");
+    if ($error === '' && $nisHapus !== '') {
+        header("Location: datasiswa.php?pesan=nonaktif");
         exit;
     }
 }
 
-// Mengambil data siswa tanpa menggunakan kolom ID
+// Mengambil data siswa aktif.
 $result = mysqli_query(
     $koneksi,
     "SELECT nis, nama, jenis_kelamin, alamat
      FROM t_siswa
+     WHERE status_aktif = 1
      ORDER BY nis DESC"
 );
 
@@ -197,8 +207,8 @@ if (!$result) {
 
     <?php if (($_GET['pesan'] ?? '') === 'berhasil'): ?>
         <p class="pesan">Data siswa berhasil ditambahkan!</p>
-    <?php elseif (($_GET['pesan'] ?? '') === 'hapus'): ?>
-        <p class="pesan">Data siswa berhasil dihapus!</p>
+    <?php elseif (($_GET['pesan'] ?? '') === 'nonaktif'): ?>
+        <p class="pesan">Data siswa berhasil dinonaktifkan.</p>
     <?php endif; ?>
 
     <?php if ($error !== ''): ?>
@@ -212,24 +222,24 @@ if (!$result) {
         <input type="text" name="nis" required>
 
         <label>Nama Siswa</label>
-        <input type="text" name="nama_siswa" required>
+        <label>NISN</label>
+        <input type="text" name="nisn" required>
 
-        <label>Kelas</label>
-        <input type="text" name="kelas"
-               placeholder="Contoh: X RPL 1" required>
+        <label>Nama Siswa</label>
+        <input type="text" name="nama" required>
 
         <label>Jenis Kelamin</label>
         <select name="jenis_kelamin" required>
             <option value="">-- Pilih Jenis Kelamin --</option>
-            <option value="Laki-laki">Laki-laki</option>
-            <option value="Perempuan">Perempuan</option>
+            <option value="L">Laki-laki</option>
+            <option value="P">Perempuan</option>
         </select>
 
-        <label>Alamat</label>
-        <textarea name="alamat"></textarea>
+        <label>Tanggal Lahir</label>
+        <input type="date" name="tanggal_lahir" required>
 
-        <label>Nomor HP</label>
-        <input type="text" name="no_hp">
+        <label>Alamat</label>
+        <textarea name="alamat" required></textarea>
 
         <button type="submit" name="tambah">
             Tambah Siswa
@@ -243,6 +253,7 @@ if (!$result) {
         <tr>
             <th>No.</th>
             <th>NIS</th>
+            <th>Nama Siswa</th>
             <th>Jenis Kelamin</th>
             <th>Alamat</th>
             <th>Aksi</th>
@@ -258,17 +269,17 @@ if (!$result) {
                     <td><?= $no++ ?></td>
                     <td><?= aman($siswa['nis']) ?></td>
                     <td><?= aman($siswa['nama']) ?></td>
-                    <td><?= aman($siswa['jenis_kelamin']) ?></td>
+                    <td><?= aman($siswa['jenis_kelamin'] === 'L' ? 'Laki-laki' : 'Perempuan') ?></td>
                     <td><?= aman($siswa['alamat']) ?></td>
                     <td>
                         <form method="POST" action="datasiswa.php"
-                              onsubmit="return confirm('Yakin ingin menghapus siswa ini?');">
+                              onsubmit="return confirm('Yakin ingin menonaktifkan siswa ini?');">
                             <input type="hidden" name="nis_hapus"
                                    value="<?= aman($siswa['nis']) ?>">
 
                             <button type="submit" name="hapus"
                                     class="hapus">
-                                Hapus
+                                Nonaktifkan
                             </button>
                         </form>
                     </td>
@@ -277,7 +288,7 @@ if (!$result) {
 
         <?php else: ?>
             <tr>
-                <td colspan="8">Belum ada data siswa.</td>
+                <td colspan="6">Belum ada data siswa.</td>
             </tr>
         <?php endif; ?>
         </tbody>
