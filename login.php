@@ -2,8 +2,11 @@
 <?php
 session_start();
 
-if (isset($_SESSION['user_id'])) {
-    header("Location: dashboard.php");
+if (isset($_SESSION['id'])) {
+    $tujuan = ($_SESSION['role'] ?? '') === 'guru'
+        ? 'guru_dashboard.php'
+        : 'dashboard.php';
+    header("Location: " . $tujuan);
     exit;
 }
 
@@ -87,7 +90,7 @@ $error = $_GET['error'] ?? '';
 
 <body>
     <div class="login-box">
-        <h2>Login Admin</h2>
+        <h2>Login</h2>
         <p>Aplikasi Sistem Informasi Sekolah</p>
 
         <?php if ($error === 'gagal'): ?>
@@ -97,9 +100,11 @@ $error = $_GET['error'] ?? '';
         <?php endif; ?>
 
         <form action="proses_login.php" method="POST">
-            <label for="username">Email</label>
+            <label for="username">Email, username, nama, atau NIP guru</label>
             <input type="text" id="username" name="email"
-                   autocomplete="username" required>
+                   autocomplete="username" placeholder="Contoh: user006 atau 1989000006"
+                   value="<?= htmlspecialchars((string)($_GET['username'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                   required>
 
             <label for="password">Password</label>
             <input type="password" id="password" name="password"

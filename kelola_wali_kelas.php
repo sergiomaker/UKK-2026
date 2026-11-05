@@ -2,6 +2,7 @@
 require_once __DIR__ . '/cek_session.php';
 
 mysqli_set_charset($koneksi, "utf8mb4");
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
 function aman($data)
 {
@@ -11,129 +12,135 @@ function aman($data)
 $pesan = '';
 $error = '';
 
-// Tambah data wali kelas
-if (isset($_POST['tambah'])) {
-    $nip = trim($_POST['nip'] ?? '');
-    $nama = trim($_POST['nama_wali_kelas'] ?? '');
-    $jk = $_POST['jenis_kelamin'] ?? '';
-    $kelas = trim($_POST['kelas'] ?? '');
-    $no_hp = trim($_POST['no_hp'] ?? '');
-    $alamat = trim($_POST['alamat'] ?? '');
+$data_edit = null;
+$guruList = null;
+$kelasList = null;
+$tahunAjaranList = null;
+$result = null;
 
-    if (
-        $nip === '' || $nama === '' || $kelas === '' ||
-        !in_array($jk, ['Laki-laki', 'Perempuan'], true)
-    ) {
-        $error = 'NIP, nama, jenis kelamin, dan kelas wajib diisi.';
-    } else {
-        try {
-            $stmt = $koneksi->prepare(
-                "INSERT INTO wali_kelas
-                (nip, nama_wali_kelas, jenis_kelamin, kelas, no_hp, alamat)
-                VALUES (?, ?, ?, ?, ?, ?)"
-            );
-            $stmt->bind_param(
-                "ssssss",
-                $nip,
-                $nama,
-                $jk,
-                $kelas,
-                $no_hp,
-                $alamat
-            );
-            $stmt->execute();
+try {
+    if (isset($_POST['tambah']) || isset($_POST['edit'])) {
+        $id = (int)($_POST['id'] ?? 0);
+        $tahunAjaranId = (int)($_POST['tahun_ajaran_id'] ?? 0);
+        $kelasId = (int)($_POST['kelas_id'] ?? 0);
+        $guruId = (int)($_POST['guru_id'] ?? 0);
+        $tanggalMulai = trim($_POST['tanggal_mulai'] ?? '');
+        $tanggalSelesai = trim($_POST['tanggal_selesai'] ?? '');
+        $statusAktif = (int)($_POST['status_aktif'] ?? -1);
+        $tanggalMulaiValid = DateTime::createFromFormat('!Y-m-d', $tanggalMulai);
+        $tanggalSelesaiValid = DateTime::createFromFormat('!Y-m-d', $tanggalSelesai);
 
-            header("Location: kelola_wali_kelas.php?pesan=tambah");
+        if (
+            (isset($_POST['edit']) && $id <= 0) ||
+            $tahunAjaranId <= 0 || $kelasId <= 0 || $guruId <= 0 ||
+            !$tanggalMulaiValid || $tanggalMulaiValid->format('Y-m-d') !== $tanggalMulai ||
+            !$tanggalSelesaiValid || $tanggalSelesaiValid->format('Y-m-d') !== $tanggalSelesai ||
+            $tanggalMulai > $tanggalSelesai ||
+            !in_array($statusAktif, [0, 1], true)
+        ) {
+            $error = 'Lengkapi data wali kelas dengan benar.';
+        } else {
+            if (isset($_POST['edit'])) {
+                $stmt = $koneksi->prepare(
+                    "UPDATE t_wali_kelas
+                     SET tahun_ajaran_id=?, kelas_id=?, guru_id=?,
+                         tanggal_mulai=?, tanggal_selesai=?, status_aktif=?,
+                         updated_at=NOW()
+                     WHERE id=?"
+                );
+                $stmt->bind_param(
+                    "iiissii",
+                    $tahunAjaranId,
+                    $kelasId,
+                    $guruId,
+                    $tanggalMulai,
+                    $tanggalSelesai,
+                    $statusAktif,
+                    $id
+                );
+                $stmt->execute();
+                header("Location: kelola_wali_kelas.php?pesan=edit");
+            } else {
+                $stmt = $koneksi->prepare(
+                    "INSERT INTO t_wali_kelas
+                     (tahun_ajaran_id, kelas_id, guru_id, tanggal_mulai,
+                      tanggal_selesai, status_aktif, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())"
+                );
+                $stmt->bind_param(
+                    "iiissi",
+                    $tahunAjaranId,
+                    $kelasId,
+                    $guruId,
+                    $tanggalMulai,
+                    $tanggalSelesai,
+                    $statusAktif
+                );
+                $stmt->execute();
+                header("Location: kelola_wali_kelas.php?pesan=tambah");
+            }
             exit;
-        } catch (mysqli_sql_exception $e) {
-            $error = $e->getCode() == 1062
-                ? 'NIP sudah terdaftar.'
-                : 'Gagal menyimpan data. Periksa tabel database.';
         }
     }
-}
 
-// Edit data wali kelas
-if (isset($_POST['edit'])) {
-    $id = (int)($_POST['id'] ?? 0);
-    $nip = trim($_POST['nip'] ?? '');
-    $nama = trim($_POST['nama_wali_kelas'] ?? '');
-    $jk = $_POST['jenis_kelamin'] ?? '';
-    $kelas = trim($_POST['kelas'] ?? '');
-    $no_hp = trim($_POST['no_hp'] ?? '');
-    $alamat = trim($_POST['alamat'] ?? '');
-
-    if (
-        $id <= 0 || $nip === '' || $nama === '' || $kelas === '' ||
-        !in_array($jk, ['Laki-laki', 'Perempuan'], true)
-    ) {
-        $error = 'Data edit tidak lengkap atau tidak valid.';
-    } else {
-        try {
-            $stmt = $koneksi->prepare(
-                "UPDATE wali_kelas SET
-                nip=?, nama_wali_kelas=?, jenis_kelamin=?,
-                kelas=?, no_hp=?, alamat=?
-                WHERE id=?"
-            );
-            $stmt->bind_param(
-                "ssssssi",
-                $nip,
-                $nama,
-                $jk,
-                $kelas,
-                $no_hp,
-                $alamat,
-                $id
-            );
+    if (isset($_POST['hapus'])) {
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) {
+            $error = 'Data wali kelas tidak valid.';
+        } else {
+            $stmt = $koneksi->prepare("DELETE FROM t_wali_kelas WHERE id=?");
+            $stmt->bind_param("i", $id);
             $stmt->execute();
-
-            header("Location: kelola_wali_kelas.php?pesan=edit");
+            header("Location: kelola_wali_kelas.php?pesan=hapus");
             exit;
-        } catch (mysqli_sql_exception $e) {
-            $error = $e->getCode() == 1062
-                ? 'NIP sudah digunakan oleh wali kelas lain.'
-                : 'Gagal memperbarui data.';
         }
     }
-}
 
-// Hapus data wali kelas
-if (isset($_POST['hapus'])) {
-    $id = (int)($_POST['id'] ?? 0);
-
-    if ($id > 0) {
-        $stmt = $koneksi->prepare(
-            "DELETE FROM wali_kelas WHERE id=?"
-        );
+    if (isset($_GET['edit'])) {
+        $id = (int)$_GET['edit'];
+        $stmt = $koneksi->prepare("SELECT * FROM t_wali_kelas WHERE id=?");
         $stmt->bind_param("i", $id);
         $stmt->execute();
+        $data_edit = $stmt->get_result()->fetch_assoc();
     }
 
-    header("Location: kelola_wali_kelas.php?pesan=hapus");
-    exit;
-}
-
-// Ambil data untuk form edit
-$data_edit = null;
-
-if (isset($_GET['edit'])) {
-    $id = (int)$_GET['edit'];
-
-    $stmt = $koneksi->prepare(
-        "SELECT * FROM wali_kelas WHERE id=?"
+    $guruList = $koneksi->query(
+        "SELECT id, nip, nama FROM t_guru ORDER BY status_aktif DESC, nama"
     );
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
-    $data_edit = $stmt->get_result()->fetch_assoc();
+    $kelasList = $koneksi->query(
+        "SELECT k.id, k.nama
+         FROM t_kelas k
+         JOIN (SELECT MAX(id) AS id FROM t_kelas GROUP BY nama) terbaru
+           ON terbaru.id = k.id
+         ORDER BY k.status_aktif DESC, k.nama"
+    );
+    $tahunAjaranList = $koneksi->query(
+        "SELECT ta.id, ta.nama, ta.tanggal_mulai, ta.tanggal_selesai
+         FROM t_tahun_ajaran ta
+         JOIN (
+             SELECT MAX(id) AS id FROM t_tahun_ajaran GROUP BY nama
+         ) terbaru ON terbaru.id = ta.id
+         ORDER BY (CURDATE() BETWEEN ta.tanggal_mulai AND ta.tanggal_selesai) DESC,
+                  ta.status_aktif DESC, ta.tanggal_mulai DESC, ta.id DESC"
+    );
+    $result = $koneksi->query(
+        "SELECT wk.id, wk.tanggal_mulai, wk.tanggal_selesai, wk.status_aktif,
+                wk.guru_id, wk.kelas_id, wk.tahun_ajaran_id,
+                g.nip, g.nama AS nama_guru, k.nama AS nama_kelas,
+                ta.nama AS nama_tahun_ajaran
+         FROM t_wali_kelas wk
+         LEFT JOIN t_guru g ON g.id = wk.guru_id
+         LEFT JOIN t_kelas k ON k.id = wk.kelas_id
+         LEFT JOIN t_tahun_ajaran ta ON ta.id = wk.tahun_ajaran_id
+         ORDER BY wk.id DESC"
+    );
+} catch (mysqli_sql_exception $e) {
+    error_log('kelola_wali_kelas.php: ' . $e->getMessage());
+    $error = 'Gagal memproses data wali kelas. Periksa struktur dan isi database.';
 }
-
-// Ambil semua data
-$result = $koneksi->query(
-    "SELECT * FROM wali_kelas ORDER BY id DESC"
-);
 
 $pesan = $_GET['pesan'] ?? '';
+$formData = $data_edit ?? $_POST;
 ?>
 
 <!DOCTYPE html>
@@ -327,47 +334,75 @@ $pesan = $_GET['pesan'] ?? '';
 
                 <div class="form-grid">
                     <div>
-                        <label>NIP</label>
-                        <input name="nip" maxlength="30"
-                            value="<?= aman($data_edit['nip'] ?? '') ?>" required>
-                    </div>
-
-                    <div>
-                        <label>Nama Wali Kelas</label>
-                        <input name="nama_wali_kelas" maxlength="100"
-                            value="<?= aman($data_edit['nama_wali_kelas'] ?? '') ?>"
-                            required>
-                    </div>
-
-                    <div>
-                        <label>Jenis Kelamin</label>
-                        <select name="jenis_kelamin" required>
-                            <option value="">-- Pilih --</option>
-                            <option value="Laki-laki"
-                                <?= ($data_edit['jenis_kelamin'] ?? '') === 'Laki-laki'
-                                    ? 'selected' : '' ?>>Laki-laki</option>
-                            <option value="Perempuan"
-                                <?= ($data_edit['jenis_kelamin'] ?? '') === 'Perempuan'
-                                    ? 'selected' : '' ?>>Perempuan</option>
+                        <label>Guru</label>
+                        <select name="guru_id" required>
+                            <option value="">-- Pilih guru --</option>
+                            <?php if ($guruList instanceof mysqli_result): ?>
+                                <?php while ($guru = $guruList->fetch_assoc()): ?>
+                                    <option value="<?= (int)$guru['id'] ?>"
+                                        <?= (int)($formData['guru_id'] ?? 0) === (int)$guru['id']
+                                            ? 'selected' : '' ?>>
+                                        <?= aman($guru['nama'] . ' (' . $guru['nip'] . ')') ?>
+                                    </option>
+                                <?php endwhile; ?>
+                            <?php endif; ?>
                         </select>
                     </div>
 
                     <div>
                         <label>Kelas</label>
-                        <input name="kelas" maxlength="20"
-                            placeholder="Contoh: X RPL 1"
-                            value="<?= aman($data_edit['kelas'] ?? '') ?>" required>
+                        <select name="kelas_id" required>
+                            <option value="">-- Pilih kelas --</option>
+                            <?php if ($kelasList instanceof mysqli_result): ?>
+                                <?php while ($kelas = $kelasList->fetch_assoc()): ?>
+                                    <option value="<?= (int)$kelas['id'] ?>"
+                                        <?= (int)($formData['kelas_id'] ?? 0) === (int)$kelas['id']
+                                            ? 'selected' : '' ?>>
+                                        <?= aman($kelas['nama']) ?>
+                                    </option>
+                                <?php endwhile; ?>
+                            <?php endif; ?>
+                        </select>
                     </div>
 
                     <div>
-                        <label>Nomor HP</label>
-                        <input name="no_hp" maxlength="20"
-                            value="<?= aman($data_edit['no_hp'] ?? '') ?>">
+                        <label>Tahun Ajaran</label>
+                        <select name="tahun_ajaran_id" required>
+                            <option value="">-- Pilih tahun ajaran --</option>
+                            <?php if ($tahunAjaranList instanceof mysqli_result): ?>
+                                <?php while ($tahun = $tahunAjaranList->fetch_assoc()): ?>
+                                    <option value="<?= (int)$tahun['id'] ?>"
+                                        <?= (int)($formData['tahun_ajaran_id'] ?? 0) === (int)$tahun['id']
+                                            ? 'selected' : '' ?>>
+                                        <?= aman($tahun['nama'] . ' (' . $tahun['tanggal_mulai'] . ' - ' . $tahun['tanggal_selesai'] . ')') ?>
+                                    </option>
+                                <?php endwhile; ?>
+                            <?php endif; ?>
+                        </select>
                     </div>
 
                     <div>
-                        <label>Alamat</label>
-                        <textarea name="alamat" rows="3"><?= aman($data_edit['alamat'] ?? '') ?></textarea>
+                        <label>Tanggal Mulai</label>
+                        <input type="date" name="tanggal_mulai"
+                            value="<?= aman($formData['tanggal_mulai'] ?? '') ?>" required>
+                    </div>
+
+                    <div>
+                        <label>Tanggal Selesai</label>
+                        <input type="date" name="tanggal_selesai"
+                            value="<?= aman($formData['tanggal_selesai'] ?? '') ?>" required>
+                    </div>
+
+                    <div>
+                        <label>Status</label>
+                        <select name="status_aktif" required>
+                            <option value="1"
+                                <?= (string)($formData['status_aktif'] ?? '1') === '1'
+                                    ? 'selected' : '' ?>>Aktif</option>
+                            <option value="0"
+                                <?= (string)($formData['status_aktif'] ?? '') === '0'
+                                    ? 'selected' : '' ?>>Tidak aktif</option>
+                        </select>
                     </div>
                 </div>
 
@@ -390,27 +425,27 @@ $pesan = $_GET['pesan'] ?? '';
                     <thead>
                         <tr>
                             <th>No</th>
+                            <th>Guru</th>
                             <th>NIP</th>
-                            <th>Nama</th>
-                            <th>Jenis Kelamin</th>
                             <th>Kelas</th>
-                            <th>No. HP</th>
-                            <th>Alamat</th>
+                            <th>Tahun Ajaran</th>
+                            <th>Masa Tugas</th>
+                            <th>Status</th>
                             <th>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if ($result->num_rows > 0): ?>
+                        <?php if ($result instanceof mysqli_result && $result->num_rows > 0): ?>
                             <?php $no = 1; ?>
                             <?php while ($row = $result->fetch_assoc()): ?>
                                 <tr>
                                     <td><?= $no++ ?></td>
-                                    <td><?= aman($row['nip']) ?></td>
-                                    <td><?= aman($row['nama_wali_kelas']) ?></td>
-                                    <td><?= aman($row['jenis_kelamin']) ?></td>
-                                    <td><?= aman($row['kelas']) ?></td>
-                                    <td><?= aman($row['no_hp']) ?></td>
-                                    <td><?= aman($row['alamat']) ?></td>
+                                    <td><?= aman($row['nama_guru'] ?? '-') ?></td>
+                                    <td><?= aman($row['nip'] ?? '-') ?></td>
+                                    <td><?= aman($row['nama_kelas'] ?? '-') ?></td>
+                                    <td><?= aman($row['nama_tahun_ajaran'] ?? '-') ?></td>
+                                    <td><?= aman($row['tanggal_mulai']) ?> s.d. <?= aman($row['tanggal_selesai']) ?></td>
+                                    <td><?= (int)$row['status_aktif'] === 1 ? 'Aktif' : 'Tidak aktif' ?></td>
                                     <td>
                                         <div class="aksi">
                                             <a class="btn btn-edit"

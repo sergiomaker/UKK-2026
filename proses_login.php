@@ -8,26 +8,54 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// Ambil data email dan password dari form login
-$email = trim($_POST['email'] ?? '');
+// Terima email, username email, nama, atau NIP guru sebagai identitas login.
+$identitas = trim($_POST['email'] ?? '');
 $password = $_POST['password'] ?? '';
 
 // Validasi input jika kosong
-if ($email === '' || $password === '') {
-    header("Location: login.php?error=kosong");
+if ($identitas === '' || $password === '') {
+    header('Location: login.php?error=kosong&username=' . rawurlencode($identitas));
     exit;
 }
 
-// Cari berdasarkan kolom 'email' di tabel t_users menggunakan prepared statement yang aman
-$query = mysqli_prepare($koneksi,
-    "SELECT * FROM t_users WHERE email = ? LIMIT 1"
+mysqli_set_charset($koneksi, 'utf8mb4');
+
+$query = mysqli_prepare(
+    $koneksi,
+    "SELECT u.id, u.email, u.name, u.role, u.password
+     FROM t_users u
+     LEFT JOIN t_guru g ON g.user_id = u.id
+     WHERE u.role IN ('admin', 'guru')
+       AND (
+           u.email = ?
+           OR u.name = ?
+           OR SUBSTRING_INDEX(u.email, '@', 1) = ?
+           OR g.nip = ?
+       )
+     ORDER BY CASE
+         WHEN u.email = ? THEN 0
+         WHEN g.nip = ? THEN 1
+         ELSE 2
+     END, u.id
+     LIMIT 1"
 );
 
 if (!$query) {
-    die("Query error: " . mysqli_error($koneksi));
+    error_log('proses_login.php: ' . mysqli_error($koneksi));
+    http_response_code(500);
+    exit('Login tidak dapat diproses. Silakan coba lagi.');
 }
 
-mysqli_stmt_bind_param($query, "s", $email);
+mysqli_stmt_bind_param(
+    $query,
+    'ssssss',
+    $identitas,
+    $identitas,
+    $identitas,
+    $identitas,
+    $identitas,
+    $identitas
+);
 mysqli_stmt_execute($query);
 
 $result = mysqli_stmt_get_result($query);
@@ -37,6 +65,7 @@ $user = mysqli_fetch_assoc($result);
 if ($user && password_verify($password, $user['password'])) {
 
     // Buat session baru untuk keamanan
+    session_unset();
     session_regenerate_id(true);
 
     $_SESSION['id'] = $user['id'];
@@ -44,13 +73,18 @@ if ($user && password_verify($password, $user['password'])) {
     $_SESSION['name'] = $user['name'] ?? '';
     $_SESSION['role'] = $user['role'] ?? 'admin';
 
-    // Jika berhasil, masuk ke dashboard
-    header("Location: dashboard.php");
+    // Arahkan guru ke dashboard khusus, sementara peran lain ke dashboard utama.
+    $tujuan = match ($_SESSION['role']) {
+        'guru' => 'guru_dashboard.php',
+        'admin' => 'dashboard.php',
+        default => 'login.php?error=gagal',
+    };
+    header("Location: " . $tujuan);
     exit;
 
 } else {
     // Jika login gagal (email atau password salah)
-    header("Location: login.php?error=gagal");
+    header('Location: login.php?error=gagal&username=' . rawurlencode($identitas));
     exit;
 }
 ?>

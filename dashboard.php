@@ -3,6 +3,18 @@
 session_start();
 include "cek_session.php";
 
+if (!isset($_SESSION['id'])) {
+    header('Location: login.php');
+    exit;
+}
+
+if (($_SESSION['role'] ?? '') !== 'admin') {
+    header(($_SESSION['role'] ?? '') === 'guru'
+        ? 'Location: guru_dashboard.php'
+        : 'Location: login.php');
+    exit;
+}
+
 $hasilRingkasan = mysqli_query(
     $koneksi,
     "SELECT
@@ -101,6 +113,8 @@ $pages = [
     'tahun_ajaran' => 't_tahun_ajaran.php',
     'wali_kelas' => 'kelola_wali_kelas.php',
     'pelanggaran' => 'kategori%20pelanggaran.php',
+    'jenis_pelanggaran' => 'jenis_pelanggaran.php',
+    'export_data' => 'export_data.php',
     'aboutme' => 'aboutme.php',
 ];
 
@@ -620,9 +634,21 @@ $pageFile = $pages[$currentPage] ?? null;
 
                     <li class="nav-item mb-2">
                         <a href="dashboard.php?page=pelanggaran" class="nav-link <?php echo ($currentPage === 'pelanggaran') ? 'active' : 'text-white'; ?>">
-                            Pelanggaran
+                            Kategori Pelanggaran
                         </a>
                     
+                    </li>
+
+                    <li class="nav-item mb-2">
+                        <a href="dashboard.php?page=jenis_pelanggaran" class="nav-link <?php echo ($currentPage === 'jenis_pelanggaran') ? 'active' : 'text-white'; ?>">
+                            Jenis Pelanggaran
+                        </a>
+                    </li>
+
+                    <li class="nav-item mb-2">
+                        <a href="dashboard.php?page=export_data" class="nav-link <?php echo ($currentPage === 'export_data') ? 'active' : 'text-white'; ?>">
+                            Ekspor Data
+                        </a>
                     </li>
 
                     <li class="nav-item mb-2">
