@@ -57,16 +57,18 @@ try {
         "SELECT id, nip, nama
          FROM t_guru
          WHERE user_id = ? AND status_aktif = 1
-         LIMIT 1"
+         ORDER BY id"
     );
     $userId = (int)$_SESSION['id'];
     $stmt->bind_param('i', $userId);
     $stmt->execute();
-    $guru = $stmt->get_result()->fetch_assoc();
+    $profilGuru = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $guru = $profilGuru[0] ?? null;
 
     if (!$guru) {
         throw new RuntimeException('Akun guru tidak ditemukan atau tidak aktif.');
     }
+    $guru['nama'] = implode(' / ', array_column($profilGuru, 'nama'));
 
     $resultTahun = $koneksi->query(
         "SELECT id, nama, tanggal_mulai, tanggal_selesai
@@ -80,7 +82,6 @@ try {
 
     if ($tahunAjaran) {
         $tahunAjaranId = (int)$tahunAjaran['id'];
-        $guruId = (int)$guru['id'];
 
         if (isset($_POST['catat_pelanggaran']) || isset($_POST['simpan_tindakan'])) {
             $token = $_POST['csrf_token'] ?? '';
@@ -102,6 +103,7 @@ try {
                 } else {
                     $stmt = $koneksi->prepare(
                         "SELECT s.nama AS nama_siswa, k.id AS kelas_id,
+                                wk.guru_id, g.nama AS nama_guru,
                                 CONCAT_WS(' ', k.tingkat, k.nama) AS nama_kelas
                          FROM t_kelas_siswa ks
                          INNER JOIN t_siswa s ON s.id = ks.siswa_id AND s.status_aktif = 1
@@ -109,14 +111,18 @@ try {
                          INNER JOIN t_wali_kelas wk
                             ON wk.kelas_id = ks.kelas_id
                            AND wk.tahun_ajaran_id = ks.tahun_ajaran_id
-                           AND wk.guru_id = ?
+                           AND wk.guru_id IN (
+                               SELECT id FROM t_guru
+                               WHERE user_id = ? AND status_aktif = 1
+                           )
                            AND wk.status_aktif = 1
+                         INNER JOIN t_guru g ON g.id = wk.guru_id
                          WHERE ks.siswa_id = ?
                            AND ks.tahun_ajaran_id = ?
                            AND ks.status_aktif = 1
                          LIMIT 1"
                     );
-                    $stmt->bind_param('iii', $guruId, $siswaId, $tahunAjaranId);
+                    $stmt->bind_param('iii', $userId, $siswaId, $tahunAjaranId);
                     $stmt->execute();
                     $siswaTerpilih = $stmt->get_result()->fetch_assoc();
 
@@ -136,10 +142,11 @@ try {
                         $namaSiswa = $siswaTerpilih['nama_siswa'];
                         $kelasId = (int)$siswaTerpilih['kelas_id'];
                         $namaKelas = $siswaTerpilih['nama_kelas'];
+                        $guruId = (int)$siswaTerpilih['guru_id'];
                         $namaPelanggaran = $pelanggaranTerpilih['nama'];
                         $kategoriId = (int)$pelanggaranTerpilih['pelanggaran_kategori_id'];
                         $poin = (int)$pelanggaranTerpilih['poin'];
-                        $namaGuru = $guru['nama'];
+                        $namaGuru = $siswaTerpilih['nama_guru'];
                         $tindakan = 'Belum ditindaklanjuti';
                         $status = 'Baru';
                         $stmt = $koneksi->prepare(
@@ -186,12 +193,15 @@ try {
                          INNER JOIN t_wali_kelas wk
                             ON wk.kelas_id = ps.kelas_id
                            AND wk.tahun_ajaran_id = ps.tahun_ajaran_id
-                           AND wk.guru_id = ?
+                           AND wk.guru_id IN (
+                               SELECT id FROM t_guru
+                               WHERE user_id = ? AND status_aktif = 1
+                           )
                            AND wk.status_aktif = 1
                          WHERE ps.id = ? AND ps.tahun_ajaran_id = ?
                          LIMIT 1"
                     );
-                    $stmt->bind_param('iii', $guruId, $pelanggaranSiswaId, $tahunAjaranId);
+                    $stmt->bind_param('iii', $userId, $pelanggaranSiswaId, $tahunAjaranId);
                     $stmt->execute();
                     if (!$stmt->get_result()->fetch_assoc()) {
                         $error = 'Catatan tidak ditemukan di kelas binaan Anda.';
@@ -225,9 +235,11 @@ try {
         $stmt = $koneksi->prepare(
             "SELECT COUNT(*) AS jumlah_kelas
              FROM t_wali_kelas
-             WHERE guru_id = ? AND tahun_ajaran_id = ? AND status_aktif = 1"
+            WHERE guru_id IN (
+                SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+            ) AND tahun_ajaran_id = ? AND status_aktif = 1"
         );
-        $stmt->bind_param('ii', $guruId, $tahunAjaranId);
+        $stmt->bind_param('ii', $userId, $tahunAjaranId);
         $stmt->execute();
         $ringkasan['jumlah_kelas'] = (int)$stmt->get_result()->fetch_assoc()['jumlah_kelas'];
 
@@ -239,11 +251,13 @@ try {
                 ON wk.kelas_id = ks.kelas_id
                AND wk.tahun_ajaran_id = ks.tahun_ajaran_id
                AND wk.status_aktif = 1
-             WHERE wk.guru_id = ?
+             WHERE wk.guru_id IN (
+                 SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+             )
                AND ks.tahun_ajaran_id = ?
                AND ks.status_aktif = 1"
         );
-        $stmt->bind_param('ii', $guruId, $tahunAjaranId);
+        $stmt->bind_param('ii', $userId, $tahunAjaranId);
         $stmt->execute();
         $ringkasan['jumlah_siswa'] = (int)$stmt->get_result()->fetch_assoc()['jumlah_siswa'];
 
@@ -251,9 +265,11 @@ try {
             "SELECT COUNT(*) AS jumlah_pelanggaran,
                     COALESCE(SUM(poin), 0) AS total_poin
              FROM t_pelanggaran_siswa
-             WHERE guru_id = ? AND tahun_ajaran_id = ?"
+             WHERE guru_id IN (
+                 SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+             ) AND tahun_ajaran_id = ?"
         );
-        $stmt->bind_param('ii', $guruId, $tahunAjaranId);
+        $stmt->bind_param('ii', $userId, $tahunAjaranId);
         $stmt->execute();
         $rekapPelanggaran = $stmt->get_result()->fetch_assoc();
         $ringkasan['jumlah_pelanggaran'] = (int)$rekapPelanggaran['jumlah_pelanggaran'];
@@ -272,13 +288,15 @@ try {
                     ) AS jumlah_siswa
              FROM t_wali_kelas wk
              INNER JOIN t_kelas k ON k.id = wk.kelas_id
-             WHERE wk.guru_id = ?
+             WHERE wk.guru_id IN (
+                 SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+             )
                AND wk.tahun_ajaran_id = ?
                AND wk.status_aktif = 1
              ORDER BY k.tingkat, k.nama
-             LIMIT 1"
+             "
         );
-        $stmt->bind_param('ii', $guruId, $tahunAjaranId);
+        $stmt->bind_param('ii', $userId, $tahunAjaranId);
         $stmt->execute();
         $result = $stmt->get_result();
         while ($baris = $result->fetch_assoc()) {
@@ -295,13 +313,15 @@ try {
                AND ks.status_aktif = 1
              INNER JOIN t_siswa s ON s.id = ks.siswa_id AND s.status_aktif = 1
              INNER JOIN t_kelas k ON k.id = wk.kelas_id
-             WHERE wk.guru_id = ?
+             WHERE wk.guru_id IN (
+                 SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+             )
                AND wk.tahun_ajaran_id = ?
                AND wk.status_aktif = 1
              ORDER BY k.tingkat, k.nama, s.nama
-             LIMIT 1"
+             "
         );
-        $stmt->bind_param('ii', $guruId, $tahunAjaranId);
+        $stmt->bind_param('ii', $userId, $tahunAjaranId);
         $stmt->execute();
         $result = $stmt->get_result();
         while ($baris = $result->fetch_assoc()) {
@@ -315,13 +335,15 @@ try {
              INNER JOIN t_wali_kelas wk
                 ON wk.kelas_id = ps.kelas_id
                AND wk.tahun_ajaran_id = ps.tahun_ajaran_id
-               AND wk.guru_id = ?
+               AND wk.guru_id IN (
+                   SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+               )
                AND wk.status_aktif = 1
              WHERE ps.tahun_ajaran_id = ?
              ORDER BY ps.tanggal DESC, ps.id DESC
-             LIMIT 1"
+             "
         );
-        $stmt->bind_param('ii', $guruId, $tahunAjaranId);
+        $stmt->bind_param('ii', $userId, $tahunAjaranId);
         $stmt->execute();
         $result = $stmt->get_result();
         while ($baris = $result->fetch_assoc()) {
@@ -344,14 +366,16 @@ try {
              INNER JOIN t_wali_kelas wk
                 ON wk.kelas_id = ps.kelas_id
                AND wk.tahun_ajaran_id = ps.tahun_ajaran_id
-               AND wk.guru_id = ?
+               AND wk.guru_id IN (
+                   SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+               )
                AND wk.status_aktif = 1
              WHERE ps.tahun_ajaran_id = ?
                AND ps.status <> 'Ditindaklanjuti'
              ORDER BY ps.tanggal DESC, ps.id DESC
-             LIMIT 1"
+             "
         );
-        $stmt->bind_param('ii', $guruId, $tahunAjaranId);
+        $stmt->bind_param('ii', $userId, $tahunAjaranId);
         $stmt->execute();
         $result = $stmt->get_result();
         while ($baris = $result->fetch_assoc()) {
@@ -367,12 +391,14 @@ try {
              INNER JOIN t_wali_kelas wk
                 ON wk.kelas_id = ks.kelas_id
                AND wk.tahun_ajaran_id = ks.tahun_ajaran_id
-               AND wk.guru_id = ?
+               AND wk.guru_id IN (
+                   SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+               )
                AND wk.status_aktif = 1
              WHERE ks.tahun_ajaran_id = ? AND ks.status_aktif = 1
              ORDER BY k.tingkat, k.nama, s.nama"
         );
-        $stmt->bind_param('ii', $guruId, $tahunAjaranId);
+        $stmt->bind_param('ii', $userId, $tahunAjaranId);
         $stmt->execute();
         $result = $stmt->get_result();
         $siswaUntukInput = $result->fetch_all(MYSQLI_ASSOC);
@@ -389,7 +415,9 @@ try {
              INNER JOIN t_wali_kelas wk
                 ON wk.kelas_id = ks.kelas_id
                AND wk.tahun_ajaran_id = ks.tahun_ajaran_id
-               AND wk.guru_id = ?
+               AND wk.guru_id IN (
+                   SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+               )
                AND wk.status_aktif = 1
              LEFT JOIN t_pelanggaran_siswa ps
                 ON ps.siswa_id = s.id
@@ -399,9 +427,9 @@ try {
              GROUP BY s.id, s.nama, s.nis, k.id, k.tingkat, k.nama
              HAVING COUNT(ps.id) > 0
              ORDER BY k.tingkat, k.nama, s.nama
-             LIMIT 1"
+             "
         );
-        $stmt->bind_param('ii', $guruId, $tahunAjaranId);
+        $stmt->bind_param('ii', $userId, $tahunAjaranId);
         $stmt->execute();
         $result = $stmt->get_result();
         while ($baris = $result->fetch_assoc()) {

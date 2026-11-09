@@ -20,7 +20,6 @@ $hasilRingkasan = mysqli_query(
     "SELECT
         (SELECT COUNT(*) FROM t_siswa WHERE status_aktif = 1) AS siswa,
         (SELECT COUNT(*) FROM t_guru WHERE status_aktif = 1) AS guru,
-        (SELECT COUNT(*) FROM t_kelas WHERE status_aktif = 1) AS kelas,
         (SELECT COALESCE(SUM(poin), 0) FROM t_pelanggaran_siswa) AS total_poin"
 );
 if (!$hasilRingkasan) {
@@ -685,11 +684,6 @@ $pageFile = $pages[$currentPage] ?? null;
                                 <span class="stat-label">Data Guru</span>
                                 <span class="stat-value"><?= number_format((int)$ringkasan['guru']) ?></span>
                                 <span class="stat-note">Guru aktif</span>
-                            </a>
-                            <a class="stat-card" href="dashboard.php?page=datakelas">
-                                <span class="stat-label">Data Kelas</span>
-                                <span class="stat-value"><?= number_format((int)$ringkasan['kelas']) ?></span>
-                                <span class="stat-note">Kelas aktif</span>
                             </a>
                             <div class="stat-card">
                                 <span class="stat-label">Rekap Poin Pelanggaran</span>

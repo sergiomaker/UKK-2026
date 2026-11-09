@@ -14,6 +14,86 @@ $tahunAktif = null;
 $daftarKelas = null;
 
 try {
+    if (isset($_POST['hapus'])) {
+        $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+
+        if (!$id) {
+            $error = 'Data kelas yang akan dinonaktifkan tidak valid.';
+        } else {
+            $stmt = $koneksi->prepare(
+                "UPDATE t_kelas
+                 SET status_aktif = 0, updated_at = NOW()
+                 WHERE id = ? AND status_aktif = 1"
+            );
+            $stmt->bind_param('i', $id);
+            $stmt->execute();
+
+            if ($stmt->affected_rows === 1) {
+                header('Location: datakelas.php?pesan=hapus');
+                exit;
+            }
+
+            $stmt = $koneksi->prepare(
+                "SELECT id FROM t_kelas WHERE id = ?"
+            );
+            $stmt->bind_param('i', $id);
+            $stmt->execute();
+            $kelasAda = $stmt->get_result()->fetch_assoc();
+            $error = $kelasAda
+                ? 'Kelas sudah tidak aktif.'
+                : 'Data kelas tidak ditemukan.';
+        }
+    }
+
+    if (isset($_POST['simpan_edit'])) {
+        $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+        $nama = trim($_POST['nama'] ?? '');
+        $tingkat = trim($_POST['tingkat'] ?? '');
+        $jurusan = trim($_POST['jurusan'] ?? '');
+        $jurusanDiizinkan = ['BD', 'TSM', 'RPL', 'TKJ', 'TKR', 'AKL', 'MPLB', 'Umum'];
+
+        if (
+            !$id || $nama === '' || strlen($nama) > 100 ||
+            !in_array($tingkat, ['X', 'XI', 'XII'], true) ||
+            !in_array($jurusan, $jurusanDiizinkan, true)
+        ) {
+            $error = 'Nama, tingkat, atau jurusan kelas tidak valid.';
+        } else {
+            $stmt = $koneksi->prepare(
+                "SELECT id FROM t_kelas
+                 WHERE nama = ? AND tingkat = ? AND jurusan = ?
+                   AND status_aktif = 1 AND id <> ?
+                 LIMIT 1"
+            );
+            $stmt->bind_param('sssi', $nama, $tingkat, $jurusan, $id);
+            $stmt->execute();
+
+            if ($stmt->get_result()->num_rows > 0) {
+                $error = 'Kelas dengan nama, tingkat, dan jurusan tersebut sudah terdaftar.';
+            } else {
+                $stmt = $koneksi->prepare(
+                    "UPDATE t_kelas
+                     SET nama = ?, tingkat = ?, jurusan = ?, updated_at = NOW()
+                     WHERE id = ?"
+                );
+                $stmt->bind_param('sssi', $nama, $tingkat, $jurusan, $id);
+                $stmt->execute();
+                if ($stmt->affected_rows === 0) {
+                    $stmt = $koneksi->prepare("SELECT id FROM t_kelas WHERE id = ?");
+                    $stmt->bind_param('i', $id);
+                    $stmt->execute();
+                    if (!$stmt->get_result()->fetch_assoc()) {
+                        $error = 'Data kelas yang akan diedit tidak ditemukan.';
+                    }
+                }
+                if ($error === '') {
+                    header('Location: datakelas.php?pesan=edit');
+                    exit;
+                }
+            }
+        }
+    }
+
     if (isset($_POST['tambah'])) {
         $nama = trim($_POST['nama'] ?? '');
         $tingkat = trim($_POST['tingkat'] ?? '');
@@ -29,7 +109,7 @@ try {
         } else {
             $stmt = $koneksi->prepare(
                 "SELECT id FROM t_kelas
-                 WHERE nama=? AND tingkat=? AND jurusan=?
+                 WHERE nama=? AND tingkat=? AND jurusan=? AND status_aktif=1
                  LIMIT 1"
             );
             $stmt->bind_param('sss', $nama, $tingkat, $jurusan);
@@ -48,6 +128,21 @@ try {
                 header('Location: datakelas.php?pesan=tambah');
                 exit;
             }
+        }
+    }
+
+    $kelasEdit = null;
+    $idEdit = filter_input(INPUT_GET, 'edit', FILTER_VALIDATE_INT);
+    if ($idEdit) {
+        $stmt = $koneksi->prepare(
+            "SELECT id, nama, tingkat, jurusan
+             FROM t_kelas WHERE id = ?"
+        );
+        $stmt->bind_param('i', $idEdit);
+        $stmt->execute();
+        $kelasEdit = $stmt->get_result()->fetch_assoc();
+        if (!$kelasEdit) {
+            $error = 'Data kelas yang akan diedit tidak ditemukan.';
         }
     }
 
@@ -88,6 +183,7 @@ try {
                    AND wk_terbaru.status_aktif = 1
              )
              LEFT JOIN t_guru g ON g.id = wk.guru_id
+             WHERE k.status_aktif = 1
              ORDER BY k.tingkat, k.jurusan, k.nama"
         );
         $stmt->bind_param('ii', $tahunAktif['id'], $tahunAktif['id']);
@@ -206,6 +302,43 @@ try {
             color: #1565c0;
         }
 
+        .aksi a.btn-edit {
+            display: inline-block;
+            padding: 8px 10px;
+            border-radius: 4px;
+            background: #ffc107;
+            color: #212529;
+            font-size: 13px;
+            line-height: 1.2;
+            text-decoration: none;
+        }
+
+        .aksi a.btn-edit:hover {
+            background: #e0a800;
+        }
+
+        .aksi form {
+            display: inline;
+            margin: 0;
+        }
+
+        .aksi .btn-hapus {
+            width: auto;
+            margin: 0;
+            padding: 8px 10px;
+            border: 0;
+            border-radius: 4px;
+            background: #dc3545;
+            color: white;
+            font-size: 13px;
+            line-height: 1.2;
+            cursor: pointer;
+        }
+
+        .aksi .btn-hapus:hover {
+            background: #c82333;
+        }
+
         @media (max-width: 700px) {
             body {
                 padding: 12px;
@@ -231,20 +364,27 @@ try {
             <div class="alert alert-error"><?= aman($error) ?></div>
         <?php elseif ($pesan === 'tambah'): ?>
             <div class="alert">Data kelas berhasil ditambahkan.</div>
+        <?php elseif ($pesan === 'edit'): ?>
+            <div class="alert">Data kelas berhasil diperbarui.</div>
+        <?php elseif ($pesan === 'hapus'): ?>
+            <div class="alert">Kelas berhasil dinonaktifkan. Riwayat wali kelas dan penempatan tetap tersimpan.</div>
         <?php endif; ?>
 
-        <h3>Tambah Data Kelas</h3>
-        <form method="POST" action="datakelas.php">
+        <h3><?= $kelasEdit ? 'Edit Data Kelas' : 'Tambah Data Kelas' ?></h3>
+        <form method="POST" action="datakelas.php<?= $kelasEdit ? '?edit=' . (int)$kelasEdit['id'] : '' ?>">
+            <?php if ($kelasEdit): ?>
+                <input type="hidden" name="id" value="<?= (int)$kelasEdit['id'] ?>">
+            <?php endif; ?>
             <div class="form-grid">
                 <input type="text" name="nama" maxlength="100"
                     placeholder="Nama kelas, contoh: RPL 1"
-                    value="<?= aman($_POST['nama'] ?? '') ?>" required>
+                    value="<?= aman($_POST['nama'] ?? $kelasEdit['nama'] ?? '') ?>" required>
 
                 <select name="tingkat" required>
                     <option value="">Pilih tingkat</option>
                     <?php foreach (['X', 'XI', 'XII'] as $tingkat): ?>
                         <option value="<?= aman($tingkat) ?>"
-                            <?= ($_POST['tingkat'] ?? '') === $tingkat ? 'selected' : '' ?>>
+                            <?= ($_POST['tingkat'] ?? $kelasEdit['tingkat'] ?? '') === $tingkat ? 'selected' : '' ?>>
                             <?= aman($tingkat) ?>
                         </option>
                     <?php endforeach; ?>
@@ -254,13 +394,18 @@ try {
                     <option value="">Pilih jurusan</option>
                     <?php foreach (['BD', 'TSM', 'RPL', 'TKJ', 'TKR', 'AKL', 'MPLB', 'Umum'] as $jurusan): ?>
                         <option value="<?= aman($jurusan) ?>"
-                            <?= ($_POST['jurusan'] ?? '') === $jurusan ? 'selected' : '' ?>>
+                            <?= ($_POST['jurusan'] ?? $kelasEdit['jurusan'] ?? '') === $jurusan ? 'selected' : '' ?>>
                             <?= aman($jurusan) ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
             </div>
-            <button type="submit" name="tambah">Tambah Kelas</button>
+            <button type="submit" name="<?= $kelasEdit ? 'simpan_edit' : 'tambah' ?>">
+                <?= $kelasEdit ? 'Simpan Perubahan' : 'Tambah Kelas' ?>
+            </button>
+            <?php if ($kelasEdit): ?>
+                <a href="datakelas.php">Batal</a>
+            <?php endif; ?>
         </form>
 
         <h3>Daftar Kelas <?= $tahunAktif ? '(Tahun Ajaran ' . aman($tahunAktif['nama']) . ')' : '' ?></h3>
@@ -292,6 +437,13 @@ try {
                                     <a href="dashboard.php?page=wali_kelas" target="_top">Kelola wali kelas</a>
                                     |
                                     <a href="dashboard.php?page=penempatan_siswa" target="_top">Atur siswa</a>
+                                    |
+                                    <a class="btn-edit" href="datakelas.php?edit=<?= (int)$kelas['id'] ?>">Edit</a>
+                                    <form method="POST" action="datakelas.php"
+                                        onsubmit="return confirm('Nonaktifkan kelas ini? Riwayat wali kelas dan penempatan tetap disimpan.');">
+                                        <input type="hidden" name="id" value="<?= (int)$kelas['id'] ?>">
+                                        <button class="btn-hapus" type="submit" name="hapus">Hapus</button>
+                                    </form>
                                 </td>
                             </tr>
                         <?php endwhile; ?>

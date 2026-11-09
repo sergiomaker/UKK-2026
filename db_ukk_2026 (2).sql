@@ -461,9 +461,9 @@ CREATE TABLE `t_siswa` (
   `nis` varchar(30) DEFAULT NULL,
   `nisn` varchar(20) NOT NULL,
   `nama` varchar(150) DEFAULT NULL,
-  `jenis_kelamin` char(1) NOT NULL,
-  `tanggal_lahir` date NOT NULL,
-  `alamat` text NOT NULL,
+  `jenis_kelamin` char(1) DEFAULT NULL,
+  `tanggal_lahir` date DEFAULT NULL,
+  `alamat` text DEFAULT NULL,
   `status_aktif` tinyint(1) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp()

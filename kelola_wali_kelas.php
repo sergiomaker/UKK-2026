@@ -229,15 +229,21 @@ $formData = $data_edit ?? $_POST;
         }
 
         .btn-edit {
-            background: #2563eb;
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .btn-edit:hover {
+            background: #e0a800;
+            color: #212529;
         }
 
         .btn-hapus {
-            background: #dc2626;
+            background: #dc3545;
         }
 
         .btn-hapus:hover {
-            background: #b91c1c;
+            background: #c82333;
         }
 
         .alert {
@@ -278,7 +284,19 @@ $formData = $data_edit ?? $_POST;
 
         .aksi {
             display: flex;
-            gap: 6px;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .aksi form {
+            margin: 0;
+        }
+
+        .aksi .btn {
+            padding: 8px 10px;
+            border-radius: 4px;
+            font-size: 13px;
         }
 
         @media (max-width: 700px) {

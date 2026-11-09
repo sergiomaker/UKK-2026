@@ -168,7 +168,8 @@ $result = $koneksi->query(
     "SELECT id, nama, tanggal_mulai, tanggal_selesai
      FROM t_tahun_ajaran
      WHERE status_aktif = 1
-     ORDER BY tanggal_mulai DESC, id DESC"
+     ORDER BY (CURDATE() BETWEEN tanggal_mulai AND tanggal_selesai) DESC,
+              status_aktif DESC, tanggal_mulai DESC, id DESC"
 );
 while ($row = $result->fetch_assoc()) {
     $tahunAjaranList[] = $row;
@@ -191,9 +192,14 @@ $siswaList = [];
 $penempatanList = [];
 if ($tahunTerpilih) {
     $result = $koneksi->query(
-        "SELECT id, nama, tingkat, jurusan
-         FROM t_kelas
-         WHERE status_aktif = 1
+        "SELECT k.id, k.nama, k.tingkat, k.jurusan
+         FROM t_kelas k
+         INNER JOIN (
+             SELECT MAX(id) AS id
+             FROM t_kelas
+             GROUP BY nama, tingkat, jurusan
+         ) kelas_terbaru ON kelas_terbaru.id = k.id
+         WHERE k.status_aktif = 1
          ORDER BY tingkat, nama"
     );
     while ($row = $result->fetch_assoc()) {

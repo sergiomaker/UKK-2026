@@ -19,13 +19,18 @@ function aman($nilai)
 $_SESSION['csrf_jenis_pelanggaran'] ??= bin2hex(random_bytes(32));
 $error = '';
 $dataEdit = null;
+$totalData = 0;
+$jumlahAktif = 0;
+$jumlahNonaktif = 0;
+$jenisList = [];
 
 try {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $id = (int)($_POST['id'] ?? 0);
+
         if (!hash_equals($_SESSION['csrf_jenis_pelanggaran'], $_POST['csrf_token'] ?? '')) {
             $error = 'Sesi formulir tidak valid. Muat ulang halaman dan coba lagi.';
         } else {
-            $id = (int)($_POST['id'] ?? 0);
             $kategoriId = (int)($_POST['kategori_id'] ?? 0);
             $kode = trim($_POST['kode'] ?? '');
             $nama = trim($_POST['nama'] ?? '');
@@ -96,6 +101,15 @@ try {
     $kategoriList = $koneksi->query(
         "SELECT id, nama FROM t_pelanggaran_kategori ORDER BY status_aktif DESC, nama"
     )->fetch_all(MYSQLI_ASSOC);
+    $ringkasanJenis = $koneksi->query(
+        "SELECT COUNT(*) AS total,
+                COALESCE(SUM(status_aktif = 1), 0) AS aktif,
+                COALESCE(SUM(status_aktif = 0), 0) AS nonaktif
+         FROM t_pelanggaran"
+    )->fetch_assoc();
+    $totalData = (int)$ringkasanJenis['total'];
+    $jumlahAktif = (int)$ringkasanJenis['aktif'];
+    $jumlahNonaktif = (int)$ringkasanJenis['nonaktif'];
     $jenisList = $koneksi->query(
         "SELECT p.id, p.kode, p.nama, p.poin, p.deskripsi, p.status_aktif,
                 k.nama AS nama_kategori
@@ -107,7 +121,6 @@ try {
     error_log('jenis_pelanggaran.php: ' . $e->getMessage());
     $error = 'Data jenis pelanggaran gagal diproses. Periksa database dan coba lagi.';
     $kategoriList = $kategoriList ?? [];
-    $jenisList = $jenisList ?? [];
 }
 
 $pesan = [
@@ -125,8 +138,8 @@ $formData = $dataEdit ?? $_POST;
     <title>Jenis Pelanggaran</title>
     <style>
         * { box-sizing: border-box; }
-        body { margin: 0; padding: 24px; background: #f1f5f9; color: #17232c; font-family: Arial, sans-serif; }
-        .container { max-width: 1100px; margin: auto; }
+        body { margin: 0; padding: 0; background: #f1f5f9; color: #17232c; font-family: Arial, sans-serif; }
+        .container { width: 100%; max-width: none; margin: 0; }
         .panel { margin-bottom: 20px; padding: 22px; border-radius: 10px; background: #fff; box-shadow: 0 2px 8px #0000000d; }
         h1, h2 { color: #1769aa; }
         .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -141,7 +154,25 @@ $formData = $dataEdit ?? $_POST;
         th, td { padding: 10px; border: 1px solid #dce4e8; text-align: left; }
         th { background: #1769aa; color: #fff; }
         a { color: #1769aa; }
-        @media (max-width: 650px) { body { padding: 12px; } .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } }
+        a.btn-edit {
+            display: inline-block;
+            padding: 8px 10px;
+            border-radius: 4px;
+            background: #ffc107;
+            color: #212529;
+            font-size: 13px;
+            line-height: 1.2;
+            text-decoration: none;
+        }
+        a.btn-edit:hover { background: #e0a800; color: #212529; }
+        .aksi-buttons { white-space: nowrap; }
+        .table-empty { padding: 24px; text-align: center; color: #64748b; }
+        @media (max-width: 650px) {
+            .panel { padding: 16px; }
+            .grid { grid-template-columns: 1fr; }
+            .wide { grid-column: auto; }
+            th, td { padding: 8px; font-size: 13px; }
+        }
     </style>
 </head>
 
@@ -208,11 +239,15 @@ $formData = $dataEdit ?? $_POST;
                                     <td><?= aman($jenis['nama_kategori'] ?? '-') ?></td>
                                     <td><?= (int)$jenis['poin'] ?></td>
                                     <td><?= (int)$jenis['status_aktif'] === 1 ? 'Aktif' : 'Nonaktif' ?></td>
-                                    <td><a href="jenis_pelanggaran.php?edit=<?= (int)$jenis['id'] ?>">Edit</a></td>
+                                    <td>
+                                        <div class="aksi-buttons">
+                                            <a class="btn-edit" href="jenis_pelanggaran.php?edit=<?= (int)$jenis['id'] ?>">Edit</a>
+                                        </div>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
-                            <tr><td colspan="7" style="text-align:center">Belum ada data jenis pelanggaran.</td></tr>
+                            <tr><td class="table-empty" colspan="7">Belum ada data jenis pelanggaran.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
