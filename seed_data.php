@@ -21,7 +21,8 @@ WHERE u.role = 'guru'
   AND u.email IN (
       'guruu@gmail.com',
       'user007@sekolah.test',
-      'user008@sekolah.test'
+      'user008@sekolah.test',
+      'guru@gmail.com'
   )
   AND g.id IS NULL;");
 
@@ -45,7 +46,9 @@ WHERE NOT EXISTS (
 $waliKelas = [
     ['guruu@gmail.com', 'XII', 'RPL 2'],
     ['user007@sekolah.test', 'XI', 'RPL 2'],
-    ['user008@sekolah.test', 'XI', 'TKJ 1']
+    ['user008@sekolah.test', 'XI', 'TKJ 1'],
+    ['ari.sandriana@gmail.com', 'XII', 'XII RPL 1'],
+    ['aldi.maulana@gmail.com', 'XII', 'XII RPL 2']
 ];
 
 $stmtWaliKelas = $mysqli->prepare(
@@ -69,6 +72,33 @@ $stmtWaliKelas = $mysqli->prepare(
              AND wk.guru_id = g.id
        )"
 );
+$stmtAktifkanWaliKelas = $mysqli->prepare(
+    "UPDATE t_wali_kelas wk
+       INNER JOIN t_guru g ON g.id = wk.guru_id
+       INNER JOIN t_kelas k
+          ON k.id = wk.kelas_id
+         AND k.nama = ?
+         AND k.tingkat = ?
+         AND k.jurusan = ?
+         AND k.id = (
+             SELECT MAX(k2.id)
+             FROM t_kelas k2
+             WHERE k2.nama = ? AND k2.tingkat = ? AND k2.jurusan = ?
+         )
+       INNER JOIN t_tahun_ajaran ta
+          ON ta.id = wk.tahun_ajaran_id
+         AND ta.nama = ?
+         AND ta.id = (
+             SELECT MAX(ta2.id)
+             FROM t_tahun_ajaran ta2
+             WHERE ta2.nama = ?
+         )
+       SET wk.status_aktif = 1,
+           wk.tanggal_mulai = ta.tanggal_mulai,
+           wk.tanggal_selesai = ta.tanggal_selesai,
+           wk.updated_at = NOW()
+       WHERE g.email = ?"
+);
 
 foreach ($waliKelas as [$emailGuru, $tingkat, $namaKelas]) {
     $tahunAjaran = '2026/2027';
@@ -85,8 +115,23 @@ foreach ($waliKelas as [$emailGuru, $tingkat, $namaKelas]) {
         $emailGuru
     );
     $stmtWaliKelas->execute();
+
+    $stmtAktifkanWaliKelas->bind_param(
+        'sssssssss',
+        $namaKelas,
+        $tingkat,
+        $jurusan,
+        $namaKelas,
+        $tingkat,
+        $jurusan,
+        $tahunAjaran,
+        $tahunAjaran,
+        $emailGuru
+    );
+    $stmtAktifkanWaliKelas->execute();
 }
 $stmtWaliKelas->close();
+$stmtAktifkanWaliKelas->close();
 
 $mysqli->query("INSERT INTO t_kelas_siswa
     (siswa_id, tahun_ajaran_id, kelas_id, tanggal_mulai, tanggal_selesai,

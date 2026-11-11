@@ -30,6 +30,33 @@ try {
 
         if (!hash_equals($_SESSION['csrf_jenis_pelanggaran'], $_POST['csrf_token'] ?? '')) {
             $error = 'Sesi formulir tidak valid. Muat ulang halaman dan coba lagi.';
+        } elseif (isset($_POST['hapus'])) {
+            if ($id <= 0) {
+                $error = 'Jenis pelanggaran yang akan dihapus tidak valid.';
+            } else {
+                $stmt = $koneksi->prepare(
+                    "UPDATE t_pelanggaran
+                     SET status_aktif = 0, updated_at = NOW()
+                     WHERE id = ? AND status_aktif = 1"
+                );
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+
+                if ($stmt->affected_rows === 1) {
+                    header('Location: dashboard.php?page=jenis_pelanggaran&pesan=hapus');
+                    exit;
+                }
+
+                $stmt = $koneksi->prepare(
+                    "SELECT status_aktif FROM t_pelanggaran WHERE id = ?"
+                );
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+                $jenisAda = $stmt->get_result()->fetch_assoc();
+                $error = !$jenisAda
+                    ? 'Jenis pelanggaran tidak ditemukan.'
+                    : 'Jenis pelanggaran sudah tidak aktif.';
+            }
         } else {
             $kategoriId = (int)($_POST['kategori_id'] ?? 0);
             $kode = trim($_POST['kode'] ?? '');
@@ -126,6 +153,7 @@ try {
 $pesan = [
     'tambah' => 'Jenis pelanggaran berhasil ditambahkan.',
     'edit' => 'Jenis pelanggaran berhasil diperbarui.',
+    'hapus' => 'Jenis pelanggaran berhasil dinonaktifkan. Riwayat pelanggaran tetap tersimpan.',
 ][$_GET['pesan'] ?? ''] ?? '';
 $formData = $dataEdit ?? $_POST;
 ?>
@@ -166,6 +194,19 @@ $formData = $dataEdit ?? $_POST;
         }
         a.btn-edit:hover { background: #e0a800; color: #212529; }
         .aksi-buttons { white-space: nowrap; }
+        .aksi-buttons form { display: inline; margin: 0; }
+        .aksi-buttons button.btn-hapus {
+            width: auto;
+            margin-left: 4px;
+            padding: 8px 10px;
+            border: 0;
+            border-radius: 4px;
+            background: #dc3545;
+            color: #fff;
+            font-size: 13px;
+            line-height: 1.2;
+        }
+        .aksi-buttons button.btn-hapus:hover { background: #c82333; }
         .table-empty { padding: 24px; text-align: center; color: #64748b; }
         @media (max-width: 650px) {
             .panel { padding: 16px; }
@@ -174,6 +215,7 @@ $formData = $dataEdit ?? $_POST;
             th, td { padding: 8px; font-size: 13px; }
         }
     </style>
+    <script src="pencarian_tabel.js" defer></script>
 </head>
 
 <body>
@@ -242,6 +284,14 @@ $formData = $dataEdit ?? $_POST;
                                     <td>
                                         <div class="aksi-buttons">
                                             <a class="btn-edit" href="jenis_pelanggaran.php?edit=<?= (int)$jenis['id'] ?>">Edit</a>
+                                            <?php if ((int)$jenis['status_aktif'] === 1): ?>
+                                                <form method="POST" action="jenis_pelanggaran.php"
+                                                    onsubmit="return confirm('Nonaktifkan jenis pelanggaran ini? Riwayat pelanggaran yang sudah tercatat tetap tersimpan.');">
+                                                    <input type="hidden" name="csrf_token" value="<?= aman($_SESSION['csrf_jenis_pelanggaran']) ?>">
+                                                    <input type="hidden" name="id" value="<?= (int)$jenis['id'] ?>">
+                                                    <button class="btn-hapus" type="submit" name="hapus">Hapus</button>
+                                                </form>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                 </tr>

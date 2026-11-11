@@ -15,12 +15,21 @@ if (isset($_POST['simpan_edit'])) {
     $nama = trim($_POST['nama'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $statusAktif = filter_input(INPUT_POST, 'status_aktif', FILTER_VALIDATE_INT);
+    $password = $_POST['password'] ?? '';
+    $konfirmasiPassword = $_POST['konfirmasi_password'] ?? '';
+    $passwordDiisi = is_string($password) && $password !== '';
 
     if (!$id || $nip === '' || $nama === '' || $email === '' ||
         !filter_var($email, FILTER_VALIDATE_EMAIL) ||
-        !in_array($statusAktif, [0, 1], true)
+        !in_array($statusAktif, [0, 1], true) ||
+        !is_string($password) || !is_string($konfirmasiPassword) ||
+        ($password !== '' || $konfirmasiPassword !== '') &&
+            (strlen($password) < 8 || $password !== $konfirmasiPassword)
     ) {
-        $error = "Mohon lengkapi data guru dengan benar.";
+        $error = is_string($password) && is_string($konfirmasiPassword) &&
+            $password !== $konfirmasiPassword
+            ? "Password dan konfirmasi password tidak sama."
+            : "Mohon lengkapi data guru dengan benar. Password baru minimal 8 karakter.";
     } else {
         $stmt = mysqli_prepare(
             $koneksi,
@@ -118,6 +127,30 @@ if (isset($_POST['simpan_edit'])) {
                             }
                             mysqli_stmt_close($stmt);
                         }
+
+                        if ($passwordDiisi) {
+                            $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+                            $stmt = mysqli_prepare(
+                                $koneksi,
+                                "UPDATE t_users
+                                 SET password = ?, updated_at = NOW()
+                                 WHERE id = ? AND role = 'guru'"
+                            );
+                            mysqli_stmt_bind_param(
+                                $stmt,
+                                "si",
+                                $passwordHash,
+                                $guruLama['user_id']
+                            );
+                            if (!mysqli_stmt_execute($stmt)) {
+                                throw new RuntimeException(mysqli_stmt_error($stmt));
+                            }
+                            if (mysqli_stmt_affected_rows($stmt) !== 1) {
+                                throw new RuntimeException('Akun guru tidak ditemukan.');
+                            }
+                            mysqli_stmt_close($stmt);
+                        }
+
                         mysqli_commit($koneksi);
                         header("Location: dataguru.php?pesan=edit");
                         exit;
@@ -137,41 +170,82 @@ if (isset($_POST['tambah'])) {
     $nama = trim($_POST['nama'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $statusAktif = (int)($_POST['status_aktif'] ?? 1);
-    $userId = (int)($_POST['user_id'] ?? 0);
+    $password = $_POST['password'] ?? '';
+    $konfirmasiPassword = $_POST['konfirmasi_password'] ?? '';
 
-    if ($nip === '' || $nama === '' || $email === '') {
-        $error = "Mohon lengkapi data guru dengan benar.";
+    if (
+        $nip === '' || strlen($nip) > 18 ||
+        $nama === '' || strlen($nama) > 150 ||
+        $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) ||
+        !in_array($statusAktif, [0, 1], true) ||
+        !is_string($password) || strlen($password) < 8 ||
+        !is_string($konfirmasiPassword) || $password !== $konfirmasiPassword
+    ) {
+        $error = $password !== $konfirmasiPassword
+            ? 'Password dan konfirmasi password tidak sama.'
+            : 'Lengkapi data guru dengan benar. Password minimal 8 karakter.';
     } else {
-        $sql = "INSERT INTO t_guru
-                (nip, nama, email, status_aktif, user_id, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, NOW(), NOW())";
+        $stmt = mysqli_prepare(
+            $koneksi,
+            "SELECT id FROM t_guru WHERE nip = ? OR email = ? LIMIT 1"
+        );
+        mysqli_stmt_bind_param($stmt, "ss", $nip, $email);
+        mysqli_stmt_execute($stmt);
+        $guruDuplikat = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+        mysqli_stmt_close($stmt);
 
-        $stmt = mysqli_prepare($koneksi, $sql);
+        $stmt = mysqli_prepare(
+            $koneksi,
+            "SELECT id FROM t_users WHERE email = ? LIMIT 1"
+        );
+        mysqli_stmt_bind_param($stmt, "s", $email);
+        mysqli_stmt_execute($stmt);
+        $akunDuplikat = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+        mysqli_stmt_close($stmt);
 
-        if ($stmt) {
-            mysqli_stmt_bind_param(
-                $stmt,
-                "ssssi",
-                $nip,
-                $nama,
-                $email,
-                $statusAktif,
-                $userId
-            );
-
-            if (mysqli_stmt_execute($stmt)) {
+        if ($guruDuplikat || $akunDuplikat) {
+            $error = 'NIP atau email sudah digunakan.';
+        } else {
+            mysqli_begin_transaction($koneksi);
+            try {
+                $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+                $stmt = mysqli_prepare(
+                    $koneksi,
+                    "INSERT INTO t_users
+                        (name, email, password, remember_token, role, created_at, updated_at)
+                     VALUES (?, ?, ?, '', 'guru', NOW(), NOW())"
+                );
+                mysqli_stmt_bind_param($stmt, "sss", $nama, $email, $passwordHash);
+                mysqli_stmt_execute($stmt);
+                $userId = mysqli_insert_id($koneksi);
                 mysqli_stmt_close($stmt);
+
+                $stmt = mysqli_prepare(
+                    $koneksi,
+                    "INSERT INTO t_guru
+                        (nip, nama, email, status_aktif, user_id, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, ?, NOW(), NOW())"
+                );
+                mysqli_stmt_bind_param(
+                    $stmt,
+                    "sssii",
+                    $nip,
+                    $nama,
+                    $email,
+                    $statusAktif,
+                    $userId
+                );
+                mysqli_stmt_execute($stmt);
+                mysqli_stmt_close($stmt);
+
+                mysqli_commit($koneksi);
                 header("Location: dataguru.php?pesan=berhasil");
                 exit;
-            } else {
-                $error = "Gagal menambahkan guru: " .
-                    mysqli_stmt_error($stmt);
+            } catch (Throwable $e) {
+                mysqli_rollback($koneksi);
+                error_log('dataguru.php: ' . $e->getMessage());
+                $error = 'Gagal menambahkan data guru. Periksa kembali data yang dimasukkan.';
             }
-
-            mysqli_stmt_close($stmt);
-        } else {
-            $error = "Query tambah gagal: " .
-                mysqli_error($koneksi);
         }
     }
 }
@@ -235,6 +309,7 @@ if (!$result) {
     $error = "Gagal menampilkan data guru: " .
         mysqli_error($koneksi);
 }
+
 ?>
 
 <!DOCTYPE html>
@@ -388,6 +463,7 @@ if (!$result) {
             }
         }
     </style>
+    <script src="pencarian_tabel.js" defer></script>
 </head>
 
 <body>
@@ -418,13 +494,13 @@ if (!$result) {
             <input type="text" name="nip" maxlength="30"
                 value="<?= aman($_POST['nip'] ?? $guruEdit['nip'] ?? '') ?>" required>
 
-            <label>Nama Guru</label>
+            <label for="nama">Nama Guru</label>
             <input type="text" name="nama" maxlength="150"
-                value="<?= aman($_POST['nama'] ?? $guruEdit['nama'] ?? '') ?>" required>
+                id="nama" value="<?= aman($_POST['nama'] ?? $guruEdit['nama'] ?? '') ?>" required>
 
-            <label>Email</label>
+            <label for="email">Email</label>
             <input type="email" name="email" maxlength="150"
-                value="<?= aman($_POST['email'] ?? $guruEdit['email'] ?? '') ?>" required>
+                id="email" value="<?= aman($_POST['email'] ?? $guruEdit['email'] ?? '') ?>" required>
 
             <label>Status Aktif</label>
             <select name="status_aktif" required>
@@ -432,12 +508,25 @@ if (!$result) {
                 <option value="0" <?= (int)($_POST['status_aktif'] ?? $guruEdit['status_aktif'] ?? 1) === 0 ? 'selected' : '' ?>>Tidak Aktif</option>
             </select>
 
-            <label>User ID</label>
             <?php if ($guruEdit): ?>
-                <input type="number" value="<?= aman($guruEdit['user_id']) ?>" readonly>
-                <p>User ID dipertahankan agar akun login tetap terhubung.</p>
-            <?php else: ?>
-                <input type="number" name="user_id" min="0" value="0">
+                <label for="password">Password Baru (opsional)</label>
+                <input type="password" id="password" name="password" minlength="8"
+                    autocomplete="new-password">
+
+                <label for="konfirmasi_password">Konfirmasi Password Baru</label>
+                <input type="password" id="konfirmasi_password" name="konfirmasi_password"
+                    minlength="8" autocomplete="new-password">
+                <p>Kosongkan keduanya jika tidak ingin mengubah password.</p>
+            <?php endif; ?>
+
+            <?php if (!$guruEdit): ?>
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" minlength="8"
+                    autocomplete="new-password" required>
+
+                <label for="konfirmasi_password">Konfirmasi Password</label>
+                <input type="password" id="konfirmasi_password" name="konfirmasi_password"
+                    minlength="8" autocomplete="new-password" required>
             <?php endif; ?>
 
             <button type="submit" name="<?= $guruEdit ? 'simpan_edit' : 'tambah' ?>">
@@ -509,6 +598,7 @@ if (!$result) {
         </table>
 
     </div>
+
 </body>
 
 </html>

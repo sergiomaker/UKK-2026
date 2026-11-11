@@ -319,6 +319,7 @@ $formData = $data_edit ?? $_POST;
             }
         }
     </style>
+    <script src="pencarian_tabel.js" defer></script>
 </head>
 
 <body>

@@ -335,6 +335,7 @@ if ($tahunTerpilih) {
             .form-grid { grid-template-columns: 1fr; }
         }
     </style>
+    <script src="pencarian_tabel.js" defer></script>
 </head>
 <body>
 <main class="container">

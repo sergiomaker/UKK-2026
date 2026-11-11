@@ -113,7 +113,6 @@ $pages = [
     'wali_kelas' => 'kelola_wali_kelas.php',
     'pelanggaran' => 'kategori%20pelanggaran.php',
     'jenis_pelanggaran' => 'jenis_pelanggaran.php',
-    'export_data' => 'export_data.php',
     'aboutme' => 'aboutme.php',
 ];
 
@@ -567,6 +566,7 @@ $pageFile = $pages[$currentPage] ?? null;
             }
         }
     </style>
+    <script src="pencarian_tabel.js" defer></script>
 </head>
 
 <body>
@@ -641,12 +641,6 @@ $pageFile = $pages[$currentPage] ?? null;
                     <li class="nav-item mb-2">
                         <a href="dashboard.php?page=jenis_pelanggaran" class="nav-link <?php echo ($currentPage === 'jenis_pelanggaran') ? 'active' : 'text-white'; ?>">
                             Jenis Pelanggaran
-                        </a>
-                    </li>
-
-                    <li class="nav-item mb-2">
-                        <a href="dashboard.php?page=export_data" class="nav-link <?php echo ($currentPage === 'export_data') ? 'active' : 'text-white'; ?>">
-                            Ekspor Data
                         </a>
                     </li>
 
@@ -755,6 +749,7 @@ $pageFile = $pages[$currentPage] ?? null;
                             <h3>Akses cepat</h3>
                             <p>Pilih menu yang ingin Anda kelola.</p>
                             <div class="quick-links">
+                                <a class="quick-link" href="dashboard.php?page=dataguru">Data Guru</a>
                                 <a class="quick-link" href="dashboard.php?page=datasiswa">Data Siswa</a>
                                 <a class="quick-link" href="dashboard.php?page=datakelas">Data Kelas</a>
                                 <a class="quick-link" href="dashboard.php?page=penempatan_siswa">Penempatan Siswa</a>
@@ -762,7 +757,9 @@ $pageFile = $pages[$currentPage] ?? null;
                         </section>
                     </div>
                 <?php else: ?>
-                    <iframe class="content-frame" src="<?php echo $pageFile; ?>" title="Content page"></iframe>
+                    <iframe class="content-frame"
+                        src="<?php echo $currentPage === 'laporan' ? 'laporan.php?embedded=1' : $pageFile; ?>"
+                        title="Content page"></iframe>
                 <?php endif; ?>
             </main>
     </div>

@@ -333,6 +333,7 @@ if (!$result) {
             }
         }
     </style>
+    <script src="pencarian_tabel.js" defer></script>
 </head>
 
 <body>

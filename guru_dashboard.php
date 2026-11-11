@@ -19,6 +19,15 @@ function aman($nilai)
     return htmlspecialchars((string)$nilai, ENT_QUOTES, 'UTF-8');
 }
 
+function keteranganTampilan($nilai)
+{
+    $keterangan = trim((string)$nilai);
+
+    return $keterangan === '' || strpos($keterangan, 'DEMO:') === 0
+        ? '-'
+        : $keterangan;
+}
+
 $error = '';
 $pesan = '';
 $guru = null;
@@ -31,7 +40,7 @@ $tindakanList = [];
 $jenisPelanggaran = [];
 $siswaUntukInput = [];
 $laporanSiswa = [];
-$jumlahDataDemo = 0;
+$laporanDetail = [];
 $menuAktif = $_GET['menu'] ?? 'dashboard';
 $menuDiizinkan = [
     'dashboard', 'kelas-binaan', 'daftar-siswa', 'catat-pelanggaran',
@@ -103,26 +112,22 @@ try {
                 } else {
                     $stmt = $koneksi->prepare(
                         "SELECT s.nama AS nama_siswa, k.id AS kelas_id,
-                                wk.guru_id, g.nama AS nama_guru,
-                                CONCAT_WS(' ', k.tingkat, k.nama) AS nama_kelas
+                                CASE
+                                    WHEN k.nama LIKE CONCAT(k.tingkat, ' %') THEN k.nama
+                                    ELSE CONCAT_WS(' ', k.tingkat, k.nama)
+                                END AS nama_kelas
                          FROM t_kelas_siswa ks
                          INNER JOIN t_siswa s ON s.id = ks.siswa_id AND s.status_aktif = 1
-                         INNER JOIN t_kelas k ON k.id = ks.kelas_id
-                         INNER JOIN t_wali_kelas wk
-                            ON wk.kelas_id = ks.kelas_id
-                           AND wk.tahun_ajaran_id = ks.tahun_ajaran_id
-                           AND wk.guru_id IN (
-                               SELECT id FROM t_guru
-                               WHERE user_id = ? AND status_aktif = 1
-                           )
-                           AND wk.status_aktif = 1
-                         INNER JOIN t_guru g ON g.id = wk.guru_id
+                         INNER JOIN t_kelas k
+                            ON k.id = ks.kelas_id AND k.status_aktif = 1
+                         INNER JOIN t_tahun_ajaran ta
+                            ON ta.id = ks.tahun_ajaran_id AND ta.status_aktif = 1
                          WHERE ks.siswa_id = ?
                            AND ks.tahun_ajaran_id = ?
                            AND ks.status_aktif = 1
                          LIMIT 1"
                     );
-                    $stmt->bind_param('iii', $userId, $siswaId, $tahunAjaranId);
+                    $stmt->bind_param('ii', $siswaId, $tahunAjaranId);
                     $stmt->execute();
                     $siswaTerpilih = $stmt->get_result()->fetch_assoc();
 
@@ -137,16 +142,16 @@ try {
                     $pelanggaranTerpilih = $stmt->get_result()->fetch_assoc();
 
                     if (!$siswaTerpilih || !$pelanggaranTerpilih) {
-                        $error = 'Siswa harus berasal dari kelas binaan dan jenis pelanggaran harus aktif.';
+                        $error = 'Siswa harus aktif dan sudah ditempatkan pada tahun ajaran ini, serta jenis pelanggaran harus aktif.';
                     } else {
                         $namaSiswa = $siswaTerpilih['nama_siswa'];
                         $kelasId = (int)$siswaTerpilih['kelas_id'];
                         $namaKelas = $siswaTerpilih['nama_kelas'];
-                        $guruId = (int)$siswaTerpilih['guru_id'];
+                        $guruId = (int)$guru['id'];
                         $namaPelanggaran = $pelanggaranTerpilih['nama'];
                         $kategoriId = (int)$pelanggaranTerpilih['pelanggaran_kategori_id'];
                         $poin = (int)$pelanggaranTerpilih['poin'];
-                        $namaGuru = $siswaTerpilih['nama_guru'];
+                        $namaGuru = $guru['nama'];
                         $tindakan = 'Belum ditindaklanjuti';
                         $status = 'Baru';
                         $stmt = $koneksi->prepare(
@@ -190,18 +195,33 @@ try {
                     $stmt = $koneksi->prepare(
                         "SELECT ps.id
                          FROM t_pelanggaran_siswa ps
-                         INNER JOIN t_wali_kelas wk
-                            ON wk.kelas_id = ps.kelas_id
-                           AND wk.tahun_ajaran_id = ps.tahun_ajaran_id
-                           AND wk.guru_id IN (
-                               SELECT id FROM t_guru
-                               WHERE user_id = ? AND status_aktif = 1
-                           )
-                           AND wk.status_aktif = 1
                          WHERE ps.id = ? AND ps.tahun_ajaran_id = ?
+                           AND (
+                               ps.guru_id IN (
+                                   SELECT id FROM t_guru
+                                   WHERE user_id = ? AND status_aktif = 1
+                               )
+                               OR EXISTS (
+                                   SELECT 1
+                                   FROM t_wali_kelas wk
+                                   WHERE wk.kelas_id = ps.kelas_id
+                                     AND wk.tahun_ajaran_id = ps.tahun_ajaran_id
+                                     AND wk.status_aktif = 1
+                                     AND wk.guru_id IN (
+                                         SELECT id FROM t_guru
+                                         WHERE user_id = ? AND status_aktif = 1
+                                     )
+                               )
+                           )
                          LIMIT 1"
                     );
-                    $stmt->bind_param('iii', $userId, $pelanggaranSiswaId, $tahunAjaranId);
+                    $stmt->bind_param(
+                        'iiii',
+                        $pelanggaranSiswaId,
+                        $tahunAjaranId,
+                        $userId,
+                        $userId
+                    );
                     $stmt->execute();
                     if (!$stmt->get_result()->fetch_assoc()) {
                         $error = 'Catatan tidak ditemukan di kelas binaan Anda.';
@@ -277,6 +297,10 @@ try {
 
         $stmt = $koneksi->prepare(
             "SELECT k.nama, k.tingkat, k.jurusan,
+                    CASE
+                        WHEN k.nama LIKE CONCAT(k.tingkat, ' %') THEN k.nama
+                        ELSE CONCAT_WS(' ', k.tingkat, k.nama)
+                    END AS nama_tampil,
                     wk.tanggal_mulai, wk.tanggal_selesai,
                     (
                         SELECT COUNT(DISTINCT ks.siswa_id)
@@ -305,7 +329,10 @@ try {
 
         $stmt = $koneksi->prepare(
             "SELECT DISTINCT s.nis, s.nama AS nama_siswa, s.jenis_kelamin,
-                    k.nama AS nama_kelas, k.tingkat
+                    CASE
+                        WHEN k.nama LIKE CONCAT(k.tingkat, ' %') THEN k.nama
+                        ELSE CONCAT_WS(' ', k.tingkat, k.nama)
+                    END AS nama_kelas
              FROM t_wali_kelas wk
              INNER JOIN t_kelas_siswa ks
                 ON ks.kelas_id = wk.kelas_id
@@ -329,21 +356,32 @@ try {
         }
 
         $stmt = $koneksi->prepare(
-            "SELECT ps.id, ps.tanggal, ps.nama_siswa, ps.nama_kelas,
-                    ps.nama_pelanggaran, ps.poin, ps.status, ps.tindakan
+            "SELECT ps.id, ps.tanggal, s.nis, ps.nama_siswa, ps.nama_kelas,
+                    ps.nama_pelanggaran, ps.poin, ps.status, ps.tindakan,
+                    ps.keterangan, ps.nama_guru
              FROM t_pelanggaran_siswa ps
-             INNER JOIN t_wali_kelas wk
-                ON wk.kelas_id = ps.kelas_id
-               AND wk.tahun_ajaran_id = ps.tahun_ajaran_id
-               AND wk.guru_id IN (
-                   SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
-               )
-               AND wk.status_aktif = 1
+             LEFT JOIN t_siswa s ON s.id = ps.siswa_id
              WHERE ps.tahun_ajaran_id = ?
+               AND (
+                   ps.guru_id IN (
+                       SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+                   )
+                   OR EXISTS (
+                       SELECT 1
+                       FROM t_wali_kelas wk
+                       WHERE wk.kelas_id = ps.kelas_id
+                         AND wk.tahun_ajaran_id = ps.tahun_ajaran_id
+                         AND wk.status_aktif = 1
+                         AND wk.guru_id IN (
+                             SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+                         )
+                   )
+               )
              ORDER BY ps.tanggal DESC, ps.id DESC
+             LIMIT 5
              "
         );
-        $stmt->bind_param('ii', $userId, $tahunAjaranId);
+        $stmt->bind_param('iii', $tahunAjaranId, $userId, $userId);
         $stmt->execute();
         $result = $stmt->get_result();
         while ($baris = $result->fetch_assoc()) {
@@ -351,31 +389,46 @@ try {
         }
 
         $stmt = $koneksi->prepare(
-            "SELECT COUNT(*) AS jumlah
-             FROM t_pelanggaran_siswa
-             WHERE tahun_ajaran_id = ? AND keterangan LIKE 'DEMO:%'"
+            "SELECT ps.tanggal, s.nis, ps.nama_siswa, ps.nama_kelas,
+                    ps.nama_pelanggaran, ps.poin, ps.nama_guru, ps.keterangan
+             FROM t_pelanggaran_siswa ps
+             LEFT JOIN t_siswa s ON s.id = ps.siswa_id
+             WHERE ps.tahun_ajaran_id = ?
+               AND ps.guru_id IN (
+                   SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+               )
+             ORDER BY ps.tanggal DESC, ps.id DESC"
         );
-        $stmt->bind_param('i', $tahunAjaranId);
+        $stmt->bind_param('ii', $tahunAjaranId, $userId);
         $stmt->execute();
-        $jumlahDataDemo = (int)$stmt->get_result()->fetch_assoc()['jumlah'];
+        $laporanDetail = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
         $stmt = $koneksi->prepare(
             "SELECT ps.id, ps.tanggal, ps.nama_siswa, ps.nama_kelas,
-                    ps.nama_pelanggaran, ps.poin, ps.status, ps.tindakan
+                    ps.nama_pelanggaran, ps.poin, ps.status, ps.tindakan,
+                    ps.keterangan
              FROM t_pelanggaran_siswa ps
-             INNER JOIN t_wali_kelas wk
-                ON wk.kelas_id = ps.kelas_id
-               AND wk.tahun_ajaran_id = ps.tahun_ajaran_id
-               AND wk.guru_id IN (
-                   SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
-               )
-               AND wk.status_aktif = 1
              WHERE ps.tahun_ajaran_id = ?
                AND ps.status <> 'Ditindaklanjuti'
+               AND (
+                   ps.guru_id IN (
+                       SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+                   )
+                   OR EXISTS (
+                       SELECT 1
+                       FROM t_wali_kelas wk
+                       WHERE wk.kelas_id = ps.kelas_id
+                         AND wk.tahun_ajaran_id = ps.tahun_ajaran_id
+                         AND wk.status_aktif = 1
+                         AND wk.guru_id IN (
+                             SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+                         )
+                   )
+               )
              ORDER BY ps.tanggal DESC, ps.id DESC
              "
         );
-        $stmt->bind_param('ii', $userId, $tahunAjaranId);
+        $stmt->bind_param('iii', $tahunAjaranId, $userId, $userId);
         $stmt->execute();
         $result = $stmt->get_result();
         while ($baris = $result->fetch_assoc()) {
@@ -383,53 +436,55 @@ try {
         }
 
         $stmt = $koneksi->prepare(
-            "SELECT s.id, s.nis, s.nama AS nama_siswa, k.nama AS nama_kelas,
-                    k.tingkat
+            "SELECT s.id, s.nis, s.nama AS nama_siswa,
+                    CASE
+                        WHEN k.nama LIKE CONCAT(k.tingkat, ' %') THEN k.nama
+                        ELSE CONCAT_WS(' ', k.tingkat, k.nama)
+                    END AS nama_kelas
              FROM t_kelas_siswa ks
              INNER JOIN t_siswa s ON s.id = ks.siswa_id AND s.status_aktif = 1
-             INNER JOIN t_kelas k ON k.id = ks.kelas_id
-             INNER JOIN t_wali_kelas wk
-                ON wk.kelas_id = ks.kelas_id
-               AND wk.tahun_ajaran_id = ks.tahun_ajaran_id
-               AND wk.guru_id IN (
-                   SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
-               )
-               AND wk.status_aktif = 1
+             INNER JOIN t_kelas k
+                ON k.id = ks.kelas_id AND k.status_aktif = 1
              WHERE ks.tahun_ajaran_id = ? AND ks.status_aktif = 1
              ORDER BY k.tingkat, k.nama, s.nama"
         );
-        $stmt->bind_param('ii', $userId, $tahunAjaranId);
+        $stmt->bind_param('i', $tahunAjaranId);
         $stmt->execute();
         $result = $stmt->get_result();
         $siswaUntukInput = $result->fetch_all(MYSQLI_ASSOC);
 
         $stmt = $koneksi->prepare(
             "SELECT s.nama AS nama_siswa, s.nis,
-                    CONCAT_WS(' ', k.tingkat, k.nama) AS nama_kelas,
+                    CASE
+                        WHEN k.nama LIKE CONCAT(k.tingkat, ' %') THEN k.nama
+                        ELSE CONCAT_WS(' ', k.tingkat, k.nama)
+                    END AS nama_kelas,
                     COUNT(ps.id) AS jumlah_pelanggaran,
-                    COALESCE(SUM(ps.poin), 0) AS total_poin,
-                    MAX(ps.keterangan LIKE 'DEMO:%') AS is_demo
-             FROM t_kelas_siswa ks
-             INNER JOIN t_siswa s ON s.id = ks.siswa_id AND s.status_aktif = 1
-             INNER JOIN t_kelas k ON k.id = ks.kelas_id
-             INNER JOIN t_wali_kelas wk
-                ON wk.kelas_id = ks.kelas_id
-               AND wk.tahun_ajaran_id = ks.tahun_ajaran_id
-               AND wk.guru_id IN (
-                   SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+                    COALESCE(SUM(ps.poin), 0) AS total_poin
+             FROM t_pelanggaran_siswa ps
+             INNER JOIN t_siswa s ON s.id = ps.siswa_id AND s.status_aktif = 1
+             INNER JOIN t_kelas k ON k.id = ps.kelas_id AND k.status_aktif = 1
+             WHERE ps.tahun_ajaran_id = ?
+               AND (
+                   ps.guru_id IN (
+                       SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+                   )
+                   OR EXISTS (
+                       SELECT 1
+                       FROM t_wali_kelas wk
+                       WHERE wk.kelas_id = ps.kelas_id
+                         AND wk.tahun_ajaran_id = ps.tahun_ajaran_id
+                         AND wk.status_aktif = 1
+                         AND wk.guru_id IN (
+                             SELECT id FROM t_guru WHERE user_id = ? AND status_aktif = 1
+                         )
+                   )
                )
-               AND wk.status_aktif = 1
-             LEFT JOIN t_pelanggaran_siswa ps
-                ON ps.siswa_id = s.id
-               AND ps.kelas_id = k.id
-               AND ps.tahun_ajaran_id = ks.tahun_ajaran_id
-             WHERE ks.tahun_ajaran_id = ? AND ks.status_aktif = 1
              GROUP BY s.id, s.nama, s.nis, k.id, k.tingkat, k.nama
-             HAVING COUNT(ps.id) > 0
              ORDER BY k.tingkat, k.nama, s.nama
              "
         );
-        $stmt->bind_param('ii', $userId, $tahunAjaranId);
+        $stmt->bind_param('iii', $tahunAjaranId, $userId, $userId);
         $stmt->execute();
         $result = $stmt->get_result();
         while ($baris = $result->fetch_assoc()) {
@@ -534,19 +589,28 @@ try {
             display: flex;
             flex-direction: column;
             gap: 4px;
+            flex: 1;
             margin: 0;
             padding: 0;
             list-style: none;
         }
 
         .nav-link {
-            display: block;
-            padding: 10px 12px;
-            border-radius: 7px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            border-radius: 9px;
             color: #d7e1e5;
-            font-size: 14px;
+            font-size: 15px;
             text-decoration: none;
             transition: background-color .15s ease, color .15s ease;
+        }
+
+        .nav-icon {
+            width: 20px;
+            height: 20px;
+            flex: 0 0 20px;
         }
 
         .nav-link:hover,
@@ -557,19 +621,29 @@ try {
 
         .nav-link.active {
             color: #fff;
-            background: #1769aa;
+            background: #0789f5;
             font-weight: 700;
         }
 
         .nav-divider {
             height: 1px;
-            margin: 18px 8px 12px;
+            margin: 12px 8px;
             border: 0;
             background: #35434b;
         }
 
         .nav-link.logout {
-            color: #ffb4a9;
+            color: #f87171;
+        }
+
+        .nav-link.logout:hover,
+        .nav-link.logout:focus-visible {
+            color: #fca5a5;
+            background: #293943;
+        }
+
+        .nav-spacer {
+            flex: 1;
         }
 
         .sidebar-footer {
@@ -731,15 +805,6 @@ try {
             color: #166534;
         }
 
-        .alert-demo {
-            margin-bottom: 16px;
-            padding: 14px;
-            border: 1px solid #f59e0b;
-            border-radius: 7px;
-            background: #fef3c7;
-            color: #92400e;
-        }
-
         .panel,
         .cards,
         header[id="dashboard"] {
@@ -818,6 +883,10 @@ try {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
+            .nav-spacer {
+                display: none;
+            }
+
             .nav-divider,
             .sidebar-footer {
                 display: none;
@@ -842,6 +911,7 @@ try {
             }
         }
     </style>
+    <script src="pencarian_tabel.js" defer></script>
 </head>
 
 <body>
@@ -858,23 +928,62 @@ try {
             <p class="nav-label">Menu utama</p>
             <ul class="nav-list">
                 <li><a class="nav-link <?= $menuAktif === 'dashboard' ? 'active' : '' ?>"
-                    data-menu="dashboard" href="guru_dashboard.php?menu=dashboard#dashboard">Dashboard</a></li>
-                <li><a class="nav-link <?= $menuAktif === 'kelas-binaan' ? 'active' : '' ?>"
-                    data-menu="kelas-binaan" href="guru_dashboard.php?menu=kelas-binaan#kelas-binaan">Kelas Binaan</a></li>
-                <li><a class="nav-link <?= $menuAktif === 'daftar-siswa' ? 'active' : '' ?>"
-                    data-menu="daftar-siswa" href="guru_dashboard.php?menu=daftar-siswa#daftar-siswa">Data Siswa</a></li>
+                    data-menu="dashboard" href="guru_dashboard.php?menu=dashboard#dashboard">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M3 10.8 12 3l9 7.8v9.7a.5.5 0 0 1-.5.5h-6v-6h-5v6h-6a.5.5 0 0 1-.5-.5z"/>
+                    </svg>
+                    <span>Dashboard</span>
+                </a></li>
                 <li><a class="nav-link <?= $menuAktif === 'catat-pelanggaran' ? 'active' : '' ?>"
-                    data-menu="catat-pelanggaran" href="guru_dashboard.php?menu=catat-pelanggaran#catat-pelanggaran">Catat Pelanggaran</a></li>
+                    data-menu="catat-pelanggaran" href="guru_dashboard.php?menu=catat-pelanggaran#catat-pelanggaran">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M8 4h8l2 2h2v15H4V6h2z"/>
+                        <path d="M9 4V2h6v2M12 10v7m-3.5-3.5h7"/>
+                    </svg>
+                    <span>Catat Pelanggaran</span>
+                </a></li>
                 <li><a class="nav-link <?= $menuAktif === 'tindakan' ? 'active' : '' ?>"
-                    data-menu="tindakan" href="guru_dashboard.php?menu=tindakan#tindakan">Tindakan</a></li>
-                <li><a class="nav-link <?= $menuAktif === 'riwayat' ? 'active' : '' ?>"
-                    data-menu="riwayat" href="guru_dashboard.php?menu=riwayat#riwayat">Riwayat Pelanggaran</a></li>
-                <li><a class="nav-link <?= $menuAktif === 'laporan' ? 'active' : '' ?>"
-                    data-menu="laporan" href="guru_dashboard.php?menu=laporan#laporan">Laporan</a></li>
+                    data-menu="tindakan" href="guru_dashboard.php?menu=tindakan#tindakan">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="m4 20 8.5-8.5"/>
+                        <path d="m13.5 4 6.5 6.5-3 3L10.5 7z"/>
+                        <path d="m3 21 3-3"/>
+                    </svg>
+                    <span>Tindakan</span>
+                </a></li>
                 <li><a class="nav-link <?= $menuAktif === 'rekap-poin' ? 'active' : '' ?>"
-                    data-menu="rekap-poin" href="guru_dashboard.php?menu=rekap-poin#rekap-poin">Rekap Poin</a></li>
+                    data-menu="rekap-poin" href="guru_dashboard.php?menu=rekap-poin#rekap-poin">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M4 13h4v8H4zm6-6h4v14h-4zm6-5h4v19h-4z"/>
+                    </svg>
+                    <span>Rekap Poin</span>
+                </a></li>
+                <li><a class="nav-link <?= $menuAktif === 'riwayat' ? 'active' : '' ?>"
+                    data-menu="riwayat" href="guru_dashboard.php?menu=riwayat#riwayat">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9"/>
+                        <path d="M12 7v5l3 2"/>
+                    </svg>
+                    <span>Riwayat</span>
+                </a></li>
+                <li><a class="nav-link <?= $menuAktif === 'laporan' ? 'active' : '' ?>"
+                    data-menu="laporan" href="guru_dashboard.php?menu=laporan#laporan">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                        <path d="M8 7h8M8 11h8"/>
+                    </svg>
+                    <span>Laporan Pelanggaran</span>
+                </a></li>
+                <li class="nav-spacer" aria-hidden="true"></li>
                 <li><hr class="nav-divider"></li>
-                <li><a class="nav-link logout" href="logout.php">Logout</a></li>
+                <li><a class="nav-link logout" href="logout.php">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M10 17l5-5-5-5m5 5H3"/>
+                        <path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/>
+                    </svg>
+                    <span>Logout</span>
+                </a></li>
             </ul>
             <p class="sidebar-footer">UKK 2026</p>
         </aside>
@@ -893,12 +1002,6 @@ try {
             <?php endif; ?>
             <?php if ($pesan !== ''): ?>
                 <div class="alert-success"><?= aman($pesan) ?></div>
-            <?php endif; ?>
-            <?php if ($jumlahDataDemo > 0): ?>
-                <div class="alert-demo" role="status">
-                    PERHATIAN: Ada <?= number_format($jumlahDataDemo) ?> catatan DEMO untuk simulasi.
-                    Data ini bukan kejadian nyata dan jangan digunakan sebagai catatan siswa sebenarnya.
-                </div>
             <?php endif; ?>
             <?php if ($error === ''): ?>
                 <section class="cards" data-menu-panel="dashboard" aria-label="Ringkasan guru">
@@ -936,7 +1039,7 @@ try {
                                 <?php if ($kelasList): ?>
                                     <?php foreach ($kelasList as $kelas): ?>
                                         <tr>
-                                            <td><?= aman($kelas['tingkat'] . ' ' . $kelas['nama']) ?></td>
+                                            <td><?= aman($kelas['nama_tampil']) ?></td>
                                             <td><?= aman($kelas['jurusan']) ?></td>
                                             <td><?= number_format((int)$kelas['jumlah_siswa']) ?></td>
                                             <td><?= aman($kelas['tanggal_mulai']) ?> s.d. <?= aman($kelas['tanggal_selesai']) ?></td>
@@ -969,7 +1072,7 @@ try {
                                             <td><?= $index + 1 ?></td>
                                             <td><?= aman($siswa['nis']) ?></td>
                                             <td><?= aman($siswa['nama_siswa']) ?></td>
-                                            <td><?= aman($siswa['tingkat'] . ' ' . $siswa['nama_kelas']) ?></td>
+                                            <td><?= aman($siswa['nama_kelas']) ?></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php else: ?>
@@ -992,14 +1095,21 @@ try {
                             <input type="hidden" name="csrf_token"
                                 value="<?= aman($_SESSION['csrf_guru_dashboard']) ?>">
                             <div class="form-grid">
-                                <select name="siswa_id" required>
-                                    <option value="">Pilih siswa</option>
+                                <input class="full" type="search" id="cari-siswa-pelanggaran"
+                                    placeholder="Cari nama, NIS, atau kelas siswa (contoh: XII 1)..."
+                                    aria-label="Cari nama, NIS, atau kelas siswa"
+                                    autocomplete="off">
+                                <select class="full" name="siswa_id" id="siswa-pelanggaran" required>
+                                    <option value="">Pilih siswa (<?= count($siswaUntukInput) ?> tersedia)</option>
                                     <?php foreach ($siswaUntukInput as $siswa): ?>
                                         <option value="<?= (int)$siswa['id'] ?>">
-                                            <?= aman($siswa['nis'] . ' - ' . $siswa['nama_siswa'] . ' (' . $siswa['tingkat'] . ' ' . $siswa['nama_kelas'] . ')') ?>
+                                            <?= aman($siswa['nis'] . ' - ' . $siswa['nama_siswa'] . ' (' . $siswa['nama_kelas'] . ')') ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
+                                <p class="muted full" id="hasil-cari-siswa" aria-live="polite">
+                                    <?= count($siswaUntukInput) ?> siswa tersedia. Cari nama, NIS, atau kelas, misalnya XII 1.
+                                </p>
                                 <select name="pelanggaran_id" required>
                                     <option value="">Pilih jenis pelanggaran</option>
                                     <?php foreach ($jenisPelanggaran as $jenis): ?>
@@ -1021,38 +1131,42 @@ try {
                 </section>
 
                 <section class="panel" id="laporan" data-menu-panel="laporan">
-                    <h3>Laporan Pelanggaran Kelas Binaan</h3>
+                    <h3>Laporan Pelanggaran</h3>
                     <p class="muted">
-                        Ringkasan siswa yang memiliki catatan pada tahun ajaran <?= aman($tahunAjaran['nama']) ?>.
+                        Detail seluruh pelanggaran yang Anda catat pada tahun ajaran <?= aman($tahunAjaran['nama']) ?>.
                     </p>
                     <div class="table-wrap">
                         <table>
                             <thead>
                                 <tr>
                                     <th>No</th>
+                                    <th>Tanggal</th>
                                     <th>NIS</th>
                                     <th>Nama Siswa</th>
                                     <th>Kelas</th>
-                                    <th>Jumlah Pelanggaran</th>
-                                    <th>Total Poin</th>
-                                    <th>Data</th>
+                                    <th>Pelanggaran</th>
+                                    <th>Poin</th>
+                                    <th>Dicatat Oleh</th>
+                                    <th>Keterangan</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php if ($laporanSiswa): ?>
-                                    <?php foreach ($laporanSiswa as $index => $siswa): ?>
+                                <?php if ($laporanDetail): ?>
+                                    <?php foreach ($laporanDetail as $index => $pelanggaran): ?>
                                         <tr>
                                             <td><?= $index + 1 ?></td>
-                                            <td><?= aman($siswa['nis']) ?></td>
-                                            <td><?= aman($siswa['nama_siswa']) ?></td>
-                                            <td><?= aman($siswa['nama_kelas']) ?></td>
-                                            <td><?= number_format((int)$siswa['jumlah_pelanggaran']) ?></td>
-                                            <td><?= number_format((int)$siswa['total_poin']) ?></td>
-                                            <td><?= (int)$siswa['is_demo'] === 1 ? 'DEMO' : 'Asli' ?></td>
+                                            <td><?= aman($pelanggaran['tanggal']) ?></td>
+                                            <td><?= aman($pelanggaran['nis'] ?? '') ?></td>
+                                            <td><?= aman($pelanggaran['nama_siswa']) ?></td>
+                                            <td><?= aman($pelanggaran['nama_kelas']) ?></td>
+                                            <td><?= aman($pelanggaran['nama_pelanggaran']) ?></td>
+                                            <td><?= number_format((int)$pelanggaran['poin']) ?></td>
+                                            <td><?= aman($pelanggaran['nama_guru']) ?></td>
+                                            <td><?= aman(keteranganTampilan($pelanggaran['keterangan'])) ?></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php else: ?>
-                                    <tr><td class="empty" colspan="7">Belum ada catatan pelanggaran di kelas binaan.</td></tr>
+                                    <tr><td class="empty" colspan="9">Belum ada catatan pelanggaran.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -1065,7 +1179,7 @@ try {
 
                 <section class="panel" id="rekap-poin" data-menu-panel="rekap-poin">
                     <h3>Rekap Poin Siswa</h3>
-                    <p class="muted">Rekap poin siswa yang memiliki catatan di kelas binaan.</p>
+                    <p class="muted">Rekap poin dari kelas binaan dan catatan pelanggaran yang Anda buat.</p>
                     <div class="table-wrap">
                         <table>
                             <thead>
@@ -1075,7 +1189,6 @@ try {
                                     <th>Kelas</th>
                                     <th>Jumlah Pelanggaran</th>
                                     <th>Total Poin</th>
-                                    <th>Data</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1087,11 +1200,10 @@ try {
                                             <td><?= aman($rekap['nama_kelas']) ?></td>
                                             <td><?= number_format((int)$rekap['jumlah_pelanggaran']) ?></td>
                                             <td><?= number_format((int)$rekap['total_poin']) ?></td>
-                                            <td><?= (int)$rekap['is_demo'] === 1 ? 'DEMO' : 'Asli' ?></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php else: ?>
-                                    <tr><td class="empty" colspan="6">Belum ada catatan poin di kelas binaan.</td></tr>
+                                    <tr><td class="empty" colspan="5">Belum ada catatan poin di kelas binaan.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -1110,6 +1222,7 @@ try {
                                     <th>Pelanggaran</th>
                                     <th>Poin</th>
                                     <th>Status</th>
+                                    <th>Keterangan</th>
                                     <th>Tindakan Baru</th>
                                 </tr>
                             </thead>
@@ -1123,6 +1236,7 @@ try {
                                             <td><?= aman($pelanggaran['nama_pelanggaran']) ?></td>
                                             <td><?= number_format((int)$pelanggaran['poin']) ?></td>
                                             <td><?= aman($pelanggaran['status']) ?></td>
+                                            <td><?= aman(keteranganTampilan($pelanggaran['keterangan'])) ?></td>
                                             <td>
                                                 <form class="inline-action" method="POST"
                                                     action="guru_dashboard.php?menu=tindakan#tindakan">
@@ -1139,7 +1253,7 @@ try {
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php else: ?>
-                                    <tr><td class="empty" colspan="7">Tidak ada pelanggaran yang menunggu tindak lanjut.</td></tr>
+                                    <tr><td class="empty" colspan="8">Tidak ada pelanggaran yang menunggu tindak lanjut.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -1147,7 +1261,7 @@ try {
                 </section>
 
                 <section class="panel" id="riwayat" data-menu-panel="riwayat">
-                    <h3>Riwayat Pelanggaran Kelas Binaan</h3>
+                    <h3>Riwayat Pelanggaran</h3>
                     <div class="table-wrap">
                         <table>
                             <thead>
@@ -1159,6 +1273,7 @@ try {
                                     <th>Pelanggaran</th>
                                     <th>Poin</th>
                                     <th>Status</th>
+                                    <th>Keterangan</th>
                                     <th>Tindakan</th>
                                 </tr>
                             </thead>
@@ -1173,11 +1288,12 @@ try {
                                             <td><?= aman($pelanggaran['nama_pelanggaran']) ?></td>
                                             <td><?= number_format((int)$pelanggaran['poin']) ?></td>
                                             <td><?= aman($pelanggaran['status']) ?></td>
+                                            <td><?= aman(keteranganTampilan($pelanggaran['keterangan'])) ?></td>
                                             <td><?= aman($pelanggaran['tindakan']) ?></td>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php else: ?>
-                                    <tr><td class="empty" colspan="8">Belum ada riwayat pelanggaran di kelas binaan.</td></tr>
+                                    <tr><td class="empty" colspan="9">Belum ada riwayat pelanggaran.</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
@@ -1187,6 +1303,53 @@ try {
         </main>
     </div>
 <script>
+    const pencarianSiswaPelanggaran = document.getElementById('cari-siswa-pelanggaran');
+    const pilihanSiswaPelanggaran = document.getElementById('siswa-pelanggaran');
+    const hasilCariSiswaPelanggaran = document.getElementById('hasil-cari-siswa');
+
+    if (pencarianSiswaPelanggaran && pilihanSiswaPelanggaran && hasilCariSiswaPelanggaran) {
+        const opsiSiswaPelanggaran = Array.from(pilihanSiswaPelanggaran.options).slice(1);
+        const normalkanTeksSiswa = (teks) => teks
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLocaleLowerCase('id-ID')
+            .trim();
+
+        pencarianSiswaPelanggaran.addEventListener('input', function() {
+            const kataKunci = normalkanTeksSiswa(this.value);
+            const kataPencarian = kataKunci.split(/\s+/).filter(Boolean);
+            let jumlahCocok = 0;
+
+            opsiSiswaPelanggaran.forEach(function(opsi) {
+                const teksOpsi = normalkanTeksSiswa(opsi.textContent);
+                const kataOpsi = teksOpsi.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+                const cocok = kataPencarian.every(function(kata) {
+                    return kataOpsi.some(function(kataOpsiItem) {
+                        if (/^\d+$/.test(kata)) {
+                            return kataOpsiItem === kata ||
+                                (kata.length >= 3 && kataOpsiItem.startsWith(kata));
+                        }
+                        return kataOpsiItem.includes(kata);
+                    });
+                });
+                opsi.hidden = !cocok;
+                if (cocok) {
+                    jumlahCocok += 1;
+                }
+            });
+
+            if (pilihanSiswaPelanggaran.selectedOptions[0]?.hidden) {
+                pilihanSiswaPelanggaran.value = '';
+            }
+
+            hasilCariSiswaPelanggaran.textContent = kataKunci
+                ? (jumlahCocok > 0
+                    ? `${jumlahCocok} siswa cocok. Pilih siswa dari daftar.`
+                    : 'Siswa tidak ditemukan. Coba kata kunci lain.')
+                : `${opsiSiswaPelanggaran.length} siswa tersedia. Ketik untuk menyaring daftar.`;
+        });
+    }
+
     window.addEventListener('afterprint', function () {
         document.body.classList.remove('print-report');
     });

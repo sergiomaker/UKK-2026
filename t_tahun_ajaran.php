@@ -31,8 +31,7 @@ $hasilDaftarTahun = mysqli_query(
     $koneksi,
     "SELECT nama, tanggal_mulai, tanggal_selesai, status_aktif
      FROM t_tahun_ajaran
-     ORDER BY tanggal_mulai DESC, id DESC
-     LIMIT 10"
+     ORDER BY tanggal_mulai DESC, id DESC"
 );
 if (!$hasilDaftarTahun) {
     die('Gagal mengambil daftar tahun ajaran: ' . htmlspecialchars(mysqli_error($koneksi), ENT_QUOTES, 'UTF-8'));
@@ -201,6 +200,7 @@ td {
     }
 }
 </style>
+    <script src="pencarian_tabel.js" defer></script>
 </head>
 
 <body>
