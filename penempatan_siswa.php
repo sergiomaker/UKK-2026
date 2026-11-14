@@ -168,8 +168,17 @@ $result = $koneksi->query(
     "SELECT id, nama, tanggal_mulai, tanggal_selesai
      FROM t_tahun_ajaran
      WHERE status_aktif = 1
-     ORDER BY (CURDATE() BETWEEN tanggal_mulai AND tanggal_selesai) DESC,
-              status_aktif DESC, tanggal_mulai DESC, id DESC"
+       AND tanggal_mulai >= '2026-07-01'
+       AND tanggal_mulai < '2030-07-01'
+       AND id IN (
+           SELECT MAX(id)
+           FROM t_tahun_ajaran
+           WHERE status_aktif = 1
+             AND tanggal_mulai >= '2026-07-01'
+             AND tanggal_mulai < '2030-07-01'
+           GROUP BY nama
+       )
+     ORDER BY tanggal_mulai DESC, id DESC"
 );
 while ($row = $result->fetch_assoc()) {
     $tahunAjaranList[] = $row;
